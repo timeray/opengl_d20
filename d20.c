@@ -18,6 +18,7 @@
 typedef struct {
     GLfloat x, y, z;
     GLfloat r, g, b;
+    GLfloat n[3];
 } Vertex;
 
 
@@ -34,6 +35,14 @@ bool almostEqual(GLfloat v1, GLfloat v2) {
     }
 }
 
+static mat4_to_mat3(mat4 m_in, mat3 m_out) {
+    for (size_t i = 0; i < 3; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            m_out[i][j] = m_in[i][j];
+        }
+    }
+}
+
 
 // Control flags
 bool gSwitchWireMode = false;
@@ -43,7 +52,7 @@ bool gSwitchWireMode = false;
 Vertex gVertices[] = {
     // positions        // colors
     {0.0f,  1.0f,  GR,   1.0f, 0.0f, 0.0f},
-    {0.0f,  1.0f, -GR,   0.0f, 1.0f, 0.0f},
+    {0.0f,  1.0f, -GR,   1.0f, 1.0f, 0.0f},
     {0.0f, -1.0f,  GR,   0.0f, 0.0f, 1.0f},
     {0.0f, -1.0f, -GR,   1.0f, 0.0f, 1.0f},
 
@@ -59,10 +68,54 @@ Vertex gVertices[] = {
 };
 
 
+// Store 20 icosahedron faces, 3 vertices per face
 Vertex gTriangles[20 * 3];
+//Vertex gTriangles[] = {      
+//   {-0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f, -1.0f},
+//   { 0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f, -1.0f},
+//   { 0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f, -1.0f},         
+//   {-0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f, -1.0f},
+//   { 0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f, -1.0f},
+//   {-0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f, -1.0f},
+//      
+//   { 0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f,  1.0f},
+//   {-0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f,  1.0f},
+//   { 0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f,  1.0f},      
+//   { 0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f,  1.0f},
+//   {-0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f,  1.0f},
+//   {-0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f,  1.0f},
+//   
+//   {-0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f, -1.0f,  0.0f,  0.0f},
+//   {-0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f, -1.0f,  0.0f,  0.0f},
+//   {-0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 1.0f, -1.0f,  0.0f,  0.0f},      
+//   {-0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f, -1.0f,  0.0f,  0.0f},
+//   {-0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f, -1.0f,  0.0f,  0.0f},
+//   {-0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f, -1.0f,  0.0f,  0.0f},
+//         
+//   { 0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  1.0f,  0.0f,  0.0f},
+//   { 0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  1.0f,  0.0f,  0.0f},
+//   { 0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  1.0f,  0.0f,  0.0f},         
+//   { 0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  1.0f,  0.0f,  0.0f},
+//   { 0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  1.0f,  0.0f,  0.0f},
+//   { 0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  1.0f,  0.0f,  0.0f},
+//      
+//   {-0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f, -1.0f,  0.0f},
+//   { 0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f, -1.0f,  0.0f},
+//   { 0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f, -1.0f,  0.0f},      
+//   { 0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f, -1.0f,  0.0f},
+//   {-0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f, -1.0f,  0.0f},
+//   {-0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f, -1.0f,  0.0f},
+//   
+//   { 0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  1.0f,  0.0f},
+//   {-0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  1.0f,  0.0f},
+//   { 0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  1.0f,  0.0f},   
+//   {-0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  1.0f,  0.0f},
+//   { 0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  1.0f,  0.0f},
+//   {-0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  1.0f,  0.0f},
+//};
 
 
-void generateMeshFromVertices(void) {    
+void generateIcosahedronMeshFromVertices(void) {    
     const size_t n_vertices = sizeof(gVertices) / sizeof(Vertex);
     const size_t n_triangles = sizeof(gTriangles) / sizeof(Vertex);
 
@@ -71,7 +124,7 @@ void generateMeshFromVertices(void) {
     for (size_t i = 0; i < n_vertices - 2; ++i) {
         for (size_t j = i + 1; j < n_vertices - 1; ++j) {
             for (size_t k = j + 1; k < n_vertices; ++k) {        
-
+                // All distances between vertices that form triangle in D20 should be equal to 2.0
                 if (!almostEqual(getDistance(gVertices[i], gVertices[j]), 2.0f)) {
                     continue;
                 }
@@ -99,19 +152,34 @@ void generateMeshFromVertices(void) {
                 // Constant of the plane equation
                 float c = p1.x * n[0] + p1.y * n[1] + p1.z * n[2];
 
+                // Save original vertices to form triangle
                 if (c > 0.0f) {
-                    gTriangles[count++] = p1;
-                    gTriangles[count++] = p2;
-                    gTriangles[count++] = p3;
+                    gTriangles[count] = p1;
+                    gTriangles[count + 1] = p2;
+                    gTriangles[count + 2] = p3;
                 } else {
-                    gTriangles[count++] = p2;
-                    gTriangles[count++] = p1;
-                    gTriangles[count++] = p3;
+                    gTriangles[count] = p2;
+                    gTriangles[count + 1] = p1;
+                    gTriangles[count + 2] = p3;
                 }
 
-                
+                // Save normal vector in each vertex of a new triangle
+                // Reverse normal if it has wrong direction
+                for (size_t v = 0; v < 3; ++v) {
+                    for (size_t norm_i = 0; norm_i < 3; ++norm_i) {
+                        gTriangles[count + v].n[norm_i] = n[norm_i] * (c > 0.0f ? 1.0 : -1.0);
+                    }
+                }
+
+                // Offset counter by 3 vertices
+                count += 3;
             }
         }
+    }
+    for (size_t v = 0; v < 20 * 3; ++v) {
+        printf("[%zu] (x=%.1f,y=%.1f,z=%.1f), (n1=%.2f,n2=%.2f,n3=%.2f)\n",
+               v, gTriangles[v].x, gTriangles[v].y, gTriangles[v].z,
+               gTriangles[v].n[0], gTriangles[v].n[1], gTriangles[v].n[2]);
     }
 }
 
@@ -145,27 +213,31 @@ void initVertexArrays(GLuint* vao_ptr, GLuint* vbo_ptr) {
     // Vertex array object (vao) and vertex buffer object (vbo)
     // can store multiple arrays and buffers, but we will use only one for the dice
 
-    GLuint loc_attr = 0, col_attr = 1;
+    GLuint loc_attr = 0, col_attr = 1, norm_attr = 2;
     glCreateVertexArrays(1, vao_ptr);  // create one vertex array object    
 
     // Enable attributes of vertex array
     glEnableVertexArrayAttrib(*vao_ptr, loc_attr);
     glEnableVertexArrayAttrib(*vao_ptr, col_attr);
+    glEnableVertexArrayAttrib(*vao_ptr, norm_attr);
 
     // Bind attributes to the first (and only) vertex array
     glVertexArrayAttribBinding(*vao_ptr, loc_attr, 0);
     glVertexArrayAttribBinding(*vao_ptr, col_attr, 0);
+    glVertexArrayAttribBinding(*vao_ptr, norm_attr, 0);
 
     // Specify layout (format) for attributes
-    glVertexArrayAttribFormat(*vao_ptr, loc_attr, 3, GL_FLOAT, GL_FALSE, 0);
-    glVertexArrayAttribFormat(*vao_ptr, col_attr, 3, GL_FLOAT, GL_FALSE, 12);
+    const size_t attr_size = 3;
+    glVertexArrayAttribFormat(*vao_ptr, loc_attr, attr_size, GL_FLOAT, GL_FALSE, 0);
+    glVertexArrayAttribFormat(*vao_ptr, col_attr, attr_size, GL_FLOAT, GL_FALSE, attr_size * sizeof(GL_FLOAT));
+    glVertexArrayAttribFormat(*vao_ptr, norm_attr, attr_size, GL_FLOAT, GL_FALSE, 2 * attr_size * sizeof(GL_FLOAT));
 
     // Create buffer and upload values
     glCreateBuffers(1, vbo_ptr);
     glNamedBufferStorage(*vbo_ptr, sizeof(gTriangles), &gTriangles, 0);
 
     // Bind array to the buffer
-    glVertexArrayVertexBuffer(*vao_ptr, 0, *vbo_ptr, 0, 24);
+    glVertexArrayVertexBuffer(*vao_ptr, 0, *vbo_ptr, 0, sizeof(Vertex));
 }
 
 
@@ -306,14 +378,14 @@ static void showFpsInWindowTitle(GLFWwindow* window) {
 
 void render(GLuint* vao_ptr, bool wireMode) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
+    size_t n = sizeof(gTriangles) / sizeof(Vertex);
     if (wireMode == false) {
         for (size_t i = 0; i < 1; ++i) {
             glBindVertexArray(*vao_ptr);
-            glDrawArrays(GL_TRIANGLES, 0, sizeof(gTriangles) / sizeof(Vertex));
+            glDrawArrays(GL_TRIANGLES, 0, n);
         }
     } else {
-        for (size_t i = 0; i < 20; ++i) {
+        for (size_t i = 0; i < n; ++i) {
             glBindVertexArray(*vao_ptr);
             glDrawArrays(GL_LINE_LOOP, i * 3, 3);
         }
@@ -321,12 +393,40 @@ void render(GLuint* vao_ptr, bool wireMode) {
 }
 
 
+static GLuint initUniformVariable(GLuint program, const char* name) {
+    GLuint index = glGetUniformLocation(program, name);
+    if (index == -1) {
+        printf("Unable to get uniform variable with name: %s\n", name);
+        abort();
+    }
+    return index;
+}
+
+
 void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint program) {
     double prev_time = glfwGetTime();
-    float rot_speed_deg = 20;
-    float scale = 0.5f;
+    float rot_speed_deg = 50;
+    float scale = 0.7f;
     vec3 scale_vec = { scale, scale, scale };
     bool wireMode = false;
+
+    vec3 light_direction = { 1.0f, 1.0f, 2.0f };
+    glm_normalize(light_direction);
+    GLfloat direct_brightness = 1.0;
+    GLfloat specular_brightness = 0.5;
+    GLfloat ambient_brightness = 0.2;
+
+    vec3 camera_position = { 0.0f, 0.0f, -5.0f };
+
+    // Get uniform variables ID from shaders
+    GLuint model_id = initUniformVariable(program, "model");
+    GLuint normal_matrix_id = initUniformVariable(program, "normalMatrix");
+    GLuint view_id = initUniformVariable(program, "view");
+    GLuint projection_id = initUniformVariable(program, "projection");
+    GLuint light_dir_id = initUniformVariable(program, "lightDirection");
+    GLuint ambient_brightness_id = initUniformVariable(program, "ambientBrightness");
+    GLuint direct_brightness_id = initUniformVariable(program, "directBrightness");
+    GLuint specular_brightness_id = initUniformVariable(program, "specularBrightness");
 
     while (!glfwWindowShouldClose(window)) {
         // Process flags for the iteration
@@ -338,11 +438,7 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint program) {
         // logging
         showFpsInWindowTitle(window);
 
-        // Geometry
-        // Get transformation matrix ID for shaders
-        GLuint transf_location = glGetUniformLocation(program, "transformation");
-        assert(transf_location != -1);
-
+        // Geometry        
         // Create transformation matrix
         double cur_time = glfwGetTime();
         double delta = cur_time - prev_time;
@@ -353,12 +449,26 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint program) {
         glm_mat4_identity(model);
         glm_scale(model, scale_vec);
         glm_rotate(model, glm_rad(rot_angle_deg), (vec3) { 0.0f, 1.0f, 0.0f });
+        glm_rotate(model, glm_rad(rot_angle_deg * 1.5), (vec3) { 0.0f, 0.0f, 1.0f });
+        glm_rotate(model, glm_rad(rot_angle_deg * 1.75), (vec3) { 1.0f, 0.0f, 0.0f });
+        glUniformMatrix4fv(model_id, 1, GL_FALSE, (float*)model);
 
         mat4 view;
         glm_mat4_identity(view);
-        glm_translate(view, (vec3) { 0.0f, 0.0f, -5.0f });        
-        //glm_rotate(view, glm_rad(15.0f), (vec3) { 1.0f, 0.0f, 0.0f });
-        //glm_rotate(view, glm_rad(15.0f), (vec3) { 0.0f, 1.0f, 0.0f });
+        glm_translate(view, camera_position);
+        //glm_rotate(view, glm_rad(rot_angle_deg), (vec3) { 1.0f, 0.0f, 0.0f });
+        //glm_rotate(view, glm_rad(rot_angle_deg), (vec3) { 0.0f, 1.0f, 0.0f });
+        glUniformMatrix4fv(view_id, 1, GL_FALSE, (float*)view);
+
+        mat4 view_model;
+        glm_mat4_mul(view, model, view_model);
+
+        mat4 normal_matrix4;
+        glm_mat4_inv(view_model, normal_matrix4);
+        glm_mat4_transpose(normal_matrix4);
+        mat3 normal_matrix;
+        mat4_to_mat3(normal_matrix4, normal_matrix);
+        glUniformMatrix3fv(normal_matrix_id, 1, GL_FALSE, (float*)normal_matrix);
 
         mat4 projection;
         int win_width, win_height;
@@ -366,11 +476,17 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint program) {
         float aspect_ratio = (float)win_width / (float)win_height;
         //glm_ortho_default(aspect_ratio, projection);
         glm_perspective(glm_rad(45.0f), aspect_ratio, 0.1f, 100.0f, projection);
+        glUniformMatrix4fv(projection_id, 1, GL_FALSE, (float*)projection);
 
-        glm_mat4_mul(projection, view, projection);
-        glm_mat4_mul(projection, model, projection);
-
-        glUniformMatrix4fv(transf_location, 1, GL_FALSE, (float*)projection);
+        // Lighting
+        mat3 view_matrix3;
+        mat4_to_mat3(view, view_matrix3);
+        vec4 view_light_direction;
+        glm_mat3_mulv(view_matrix3, light_direction, view_light_direction);
+        glUniform3fv(light_dir_id, 1, (float*)view_light_direction);
+        glUniform1f(ambient_brightness_id, ambient_brightness);
+        glUniform1f(direct_brightness_id, direct_brightness);
+        glUniform1f(specular_brightness_id, specular_brightness);
 
         // Keep running until close button or Alt+F4        
         render(vao_ptr, wireMode);
@@ -389,7 +505,7 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint program) {
 
 
 int main(void) {
-    generateMeshFromVertices();
+    generateIcosahedronMeshFromVertices();
 
     puts("Initialize GLFW");
 
@@ -409,7 +525,6 @@ int main(void) {
             // Graphics settings
             glEnable(GL_DEPTH_TEST);
             glEnable(GL_CULL_FACE);
-            glCullFace(GL_FRONT);
 
             // Allocate buffers and vertex arrays (buffer layouts) to store vertex data (and not send this data on every render)
             GLuint vao, vbo;
@@ -421,11 +536,16 @@ int main(void) {
                 glAttachShader(program, vertex_shader);
                 glAttachShader(program, fragment_shader);
                 glLinkProgram(program);
+                GLint link_success;
+                glGetProgramiv(program, GL_LINK_STATUS, &link_success);
+                if (link_success) {
+                    // We use only one set of shaders, so we can call glUseProgram only once
+                    glUseProgram(program);
 
-                // We use only one set of shaders, so we can call glUseProgram only once
-                glUseProgram(program);
-
-                renderLoop(window, &vao, program);
+                    renderLoop(window, &vao, program);
+                } else {
+                    puts("Shader program linking error");
+                }
 
                 // Free stuff
                 glDeleteProgram(program);
