@@ -8,8 +8,12 @@
 #include <GLFW/glfw3.h>
 #include <cglm/cglm.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 #define VERTEX_SHADER_PATH "shaders/vertex_shader.glsl"
 #define FRAGMENT_SHADER_PATH "shaders/fragment_shader.glsl"
+#define TEXTURE_PATH "textures/d20_uv.png"
 #define WINDOW_NAME "D20"
 // Golden ratio (1 + sqrt(5)) / 2
 #define GR 1.6180339887498948482045868343656
@@ -18,7 +22,10 @@
 typedef struct {
     GLfloat x, y, z;
     GLfloat r, g, b;
+    //normal
     GLfloat n[3];
+    // texture
+    GLfloat t_x, t_y;
 } Vertex;
 
 
@@ -49,22 +56,62 @@ bool gSwitchWireMode = false;
 
 
 // Set icosahedron vertices
+// order is important for texturing
 Vertex gVertices[] = {
     // positions        // colors
-    {0.0f,  1.0f,  GR,   1.0f, 0.0f, 0.0f},
-    {0.0f,  1.0f, -GR,   1.0f, 1.0f, 0.0f},
-    {0.0f, -1.0f,  GR,   0.0f, 0.0f, 1.0f},
-    {0.0f, -1.0f, -GR,   1.0f, 0.0f, 1.0f},
+    {0.0f,  1.0f,  GR,   1.0f, 0.0f, 0.0f}, // 0
+    {-GR, 0.0f,  1.0f,   0.5f, 0.5f, 1.0f}, // 1
+    {GR, 0.0f, -1.0f,   0.5f, 1.0f, 0.5f},  // 2
+    {0.0f, -1.0f, -GR,   1.0f, 0.0f, 1.0f}, // 3
+    {0.0f,  1.0f, -GR,   1.0f, 1.0f, 0.0f}, // 4    
+    {-1.0f,  GR, 0.0f,   0.0f, 0.5f, 1.0f}, // 5
+    {1.0f, -GR, 0.0f,   0.0f, 0.5f, 0.0f},  // 6
+    {0.0f, -1.0f,  GR,   0.0f, 0.0f, 1.0f}, // 7
+    {-1.0f, -GR, 0.0f,   1.0f, 0.0f, 1.0f}, // 8
+    {-GR, 0.0f, -1.0f,   1.0f, 0.0f, 1.0f}, // 9
+    {GR, 0.0f,  1.0f,   1.0f, 0.5f, 0.5f},  // 10
+    {1.0f,  GR, 0.0f,   1.0f, 1.0f, 0.0f},  // 11
+};
 
-    {1.0f,  GR, 0.0f,   1.0f, 1.0f, 0.0f},
-    {1.0f, -GR, 0.0f,   0.0f, 0.5f, 0.0f},
-    {-1.0f,  GR, 0.0f,   0.0f, 0.5f, 1.0f},
-    {-1.0f, -GR, 0.0f,   1.0f, 0.0f, 1.0f},
 
-    {GR, 0.0f,  1.0f,   1.0f, 0.5f, 0.5f},
-    {GR, 0.0f, -1.0f,   0.5f, 1.0f, 0.5f},
-    {-GR, 0.0f,  1.0f,   0.5f, 0.5f, 1.0f},
-    {-GR, 0.0f, -1.0f,   1.0f, 0.0f, 1.0f},
+typedef struct {
+    size_t id;
+    GLfloat x;
+    GLfloat y;
+    int neighbour1;
+    int neighbour2;
+} IcosahedronVertexTexturePosition;
+
+
+IcosahedronVertexTexturePosition gVerticesTexturePositions[] = {
+    { 0, 0.4287109375f, 1 - 0.212890625f, -1, -1},
+    { 1, 0.2392578125f, 1 -  0.212890625f, -1, -1},
+    { 2, 0.6181640625f, 1 -  0.541015625f, -1, -1},
+    { 3,    0.5234375f, 1 -  0.705078125f, -1, -1},
+    { 4, 0.4287109375f, 1 -  0.541015625f, -1, -1},
+    { 5,  0.333984375f, 1 -  0.376953125f, -1, -1},
+    { 6,  0.712890625f, 1 -  0.705078125f, -1, -1},
+    { 7,  0.333984375f, 1 - 0.0498046875f,  0,  1},
+    { 7,  0.333984375f, 1 - 0.0498046875f,  0, 10},
+    { 7,  0.333984375f, 1 - 0.0498046875f,  1,  8},
+    { 7, 0.8076171875f, 1 - 0.8681640625f,  6,  8},
+    { 7, 0.8076171875f, 1 - 0.8681640625f,  6, 10},
+    { 8,   0.14453125f, 1 - 0.0498046875f,  1,  7},
+    { 8,   0.14453125f, 1 - 0.0498046875f,  1,  9},
+    { 8, 0.6181640625f, 1 - 0.8681640625f,  3,  6},
+    { 8, 0.6181640625f, 1 - 0.8681640625f,  3,  9},
+    { 8, 0.6181640625f, 1 - 0.8681640625f,  6,  7},
+    { 9,   0.05078125f, 1 -  0.212890625f,  1,  8},
+    { 9, 0.1455078125f, 1 -  0.376953125f,  1,  5},
+    { 9,  0.240234375f, 1 -  0.541015625f,  4,  5},
+    { 9, 0.3349609375f, 1 -  0.705078125f,  3,  4},
+    { 9, 0.4287109375f, 1 - 0.8681640625f,  3,  8},
+    {10, 0.5224609375f, 1 - 0.0498046875f,  0,  7},
+    {10,    0.6171875f, 1 -  0.212890625f,  0, 11},
+    {10, 0.7119140625f, 1 -  0.376953125f,  2, 11},
+    {10,  0.806640625f, 1 -  0.541015625f,  2,  6},
+    {10, 0.9013671875f, 1 -  0.705078125f,  6,  7},
+    {11,    0.5234375f, 1 -  0.376953125f, -1, -1},
 };
 
 
@@ -136,6 +183,7 @@ void generateIcosahedronMeshFromVertices(void) {
                 }
 
                 assert(count < n_triangles);
+                printf("ijk = %zu,%zu,%zu\n", i, j, k);
 
                 Vertex p1 = gVertices[i];
                 Vertex p2 = gVertices[j];
@@ -171,15 +219,52 @@ void generateIcosahedronMeshFromVertices(void) {
                     }
                 }
 
+                // Save texture
+                // Find matching between new triangle and texture using texture array
+                size_t indices[3];
+                if (c > 0.0f) {
+                    indices[0] = i;
+                    indices[1] = j;
+                    indices[2] = k;
+                } else {
+                    indices[0] = j;
+                    indices[1] = i;
+                    indices[2] = k;
+                }
+                int first, second;
+                size_t n_vtex_positions = sizeof(gVerticesTexturePositions) / sizeof(IcosahedronVertexTexturePosition);
+                for (size_t v = 0; v < 3; ++v) {
+                    first = (v == 0) ? indices[1] : indices[0];
+                    second = (v == 2) ? indices[1] : indices[2];
+                    for (size_t t = 0; t < n_vtex_positions; ++t) {
+                        IcosahedronVertexTexturePosition t_pos = gVerticesTexturePositions[t];
+                        if (t_pos.id == indices[v]) {
+                            // If only one position for vertex is available
+                            // or neighbouring ids match
+                            printf("NB1 = %d (vs %d), NB2 = %d (vs %d)\n", t_pos.neighbour1, first, t_pos.neighbour2, second);
+                            if ((t_pos.neighbour1 == -1) 
+                                || ((t_pos.neighbour1 == first) && (t_pos.neighbour2 == second))
+                                || ((t_pos.neighbour1 == second) && (t_pos.neighbour2 == first))) {
+                                gTriangles[count + v].t_x = t_pos.x;
+                                gTriangles[count + v].t_y = t_pos.y;
+                                break;
+                            }
+                        }
+
+                        assert(t != (n_vtex_positions - 1));  // should break before that
+                    }
+                }                
+
                 // Offset counter by 3 vertices
                 count += 3;
             }
         }
     }
     for (size_t v = 0; v < 20 * 3; ++v) {
-        printf("[%zu] (x=%.1f,y=%.1f,z=%.1f), (n1=%.2f,n2=%.2f,n3=%.2f)\n",
+        printf("[%zu] (x=%.1f,y=%.1f,z=%.1f), (n1=%.2f,n2=%.2f,n3=%.2f), (tx=%.2f, ty=%.2f)\n",
                v, gTriangles[v].x, gTriangles[v].y, gTriangles[v].z,
-               gTriangles[v].n[0], gTriangles[v].n[1], gTriangles[v].n[2]);
+               gTriangles[v].n[0], gTriangles[v].n[1], gTriangles[v].n[2],
+               gTriangles[v].t_x, gTriangles[v].t_y);
     }
 }
 
@@ -213,24 +298,27 @@ void initVertexArrays(GLuint* vao_ptr, GLuint* vbo_ptr) {
     // Vertex array object (vao) and vertex buffer object (vbo)
     // can store multiple arrays and buffers, but we will use only one for the dice
 
-    GLuint loc_attr = 0, col_attr = 1, norm_attr = 2;
+    GLuint loc_attr = 0, col_attr = 1, norm_attr = 2, texture_attr = 3;
     glCreateVertexArrays(1, vao_ptr);  // create one vertex array object    
 
     // Enable attributes of vertex array
     glEnableVertexArrayAttrib(*vao_ptr, loc_attr);
     glEnableVertexArrayAttrib(*vao_ptr, col_attr);
     glEnableVertexArrayAttrib(*vao_ptr, norm_attr);
+    glEnableVertexArrayAttrib(*vao_ptr, texture_attr);
 
     // Bind attributes to the first (and only) vertex array
     glVertexArrayAttribBinding(*vao_ptr, loc_attr, 0);
     glVertexArrayAttribBinding(*vao_ptr, col_attr, 0);
     glVertexArrayAttribBinding(*vao_ptr, norm_attr, 0);
+    glVertexArrayAttribBinding(*vao_ptr, texture_attr, 0);
 
     // Specify layout (format) for attributes
     const size_t attr_size = 3;
     glVertexArrayAttribFormat(*vao_ptr, loc_attr, attr_size, GL_FLOAT, GL_FALSE, 0);
     glVertexArrayAttribFormat(*vao_ptr, col_attr, attr_size, GL_FLOAT, GL_FALSE, attr_size * sizeof(GL_FLOAT));
     glVertexArrayAttribFormat(*vao_ptr, norm_attr, attr_size, GL_FLOAT, GL_FALSE, 2 * attr_size * sizeof(GL_FLOAT));
+    glVertexArrayAttribFormat(*vao_ptr, texture_attr, attr_size - 1, GL_FLOAT, GL_FALSE, 3 * attr_size * sizeof(GL_FLOAT));
 
     // Create buffer and upload values
     glCreateBuffers(1, vbo_ptr);
@@ -244,6 +332,43 @@ void initVertexArrays(GLuint* vao_ptr, GLuint* vbo_ptr) {
 void freeVertexArrays(GLuint* vao_ptr, GLuint* vbo_ptr) {
     glDeleteBuffers(1, vbo_ptr);
     glDeleteVertexArrays(1, vao_ptr);
+}
+
+
+Status initTextures(const char* path, GLuint* texture_id) {
+    int width, height, n_channels;
+    unsigned char* data = stbi_load(path, &width, &height, &n_channels, 3);
+    Status status = STATUS_OK;
+
+    if (data) {
+        glGenTextures(1, texture_id);
+        glBindTexture(GL_TEXTURE_2D, *texture_id);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        //glCreateTextures(GL_TEXTURE_2D, 1, texture_id);
+        //glTextureStorage2D(*texture_id, 1, GL_RGB, width, height);
+        //glTextureSubImage2D(*texture_id, 0, 0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, data);
+        //glTextureParameteri(*texture_id, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        //glTextureParameteri(*texture_id, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        //glTextureParameteri(*texture_id, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        //glTextureParameteri(*texture_id, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        //glGenerateTextureMipmap(*texture_id);
+    } else {
+        status = STATUS_ERR;
+    }
+    stbi_image_free(data);
+    return status;
+}
+
+
+void freeTextures(GLuint* texture_id) {
+    glDeleteTextures(1, texture_id);
 }
 
 
@@ -403,7 +528,7 @@ static GLuint initUniformVariable(GLuint program, const char* name) {
 }
 
 
-void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint program) {
+void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint program) {
     double prev_time = glfwGetTime();
     float rot_speed_deg = 50;
     float scale = 0.7f;
@@ -488,6 +613,11 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint program) {
         glUniform1f(direct_brightness_id, direct_brightness);
         glUniform1f(specular_brightness_id, specular_brightness);
 
+        // Texture
+        //glActiveTexture(GL_TEXTURE0);
+        //glBindTextureUnit(0, *tex_ptr);
+        glBindTexture(GL_TEXTURE_2D, *tex_ptr);
+
         // Keep running until close button or Alt+F4        
         render(vao_ptr, wireMode);
 
@@ -527,32 +657,38 @@ int main(void) {
             glEnable(GL_CULL_FACE);
 
             // Allocate buffers and vertex arrays (buffer layouts) to store vertex data (and not send this data on every render)
-            GLuint vao, vbo;
+            GLuint vao = 0, vbo = 0;
             initVertexArrays(&vao, &vbo);
 
-            GLuint vertex_shader, fragment_shader;
-            if (initShaders(&vertex_shader, &fragment_shader)) {
-                GLuint program = glCreateProgram();
-                glAttachShader(program, vertex_shader);
-                glAttachShader(program, fragment_shader);
-                glLinkProgram(program);
-                GLint link_success;
-                glGetProgramiv(program, GL_LINK_STATUS, &link_success);
-                if (link_success) {
-                    // We use only one set of shaders, so we can call glUseProgram only once
-                    glUseProgram(program);
+            GLuint texture_id = 0;
+            if (initTextures(TEXTURE_PATH, &texture_id) == STATUS_OK) {
+                GLuint vertex_shader, fragment_shader;
+                if (initShaders(&vertex_shader, &fragment_shader)) {
+                    GLuint program = glCreateProgram();
+                    glAttachShader(program, vertex_shader);
+                    glAttachShader(program, fragment_shader);
+                    glLinkProgram(program);
+                    GLint link_success;
+                    glGetProgramiv(program, GL_LINK_STATUS, &link_success);
+                    if (link_success) {
+                        // We use only one set of shaders, so we can call glUseProgram only once
+                        glUseProgram(program);
 
-                    renderLoop(window, &vao, program);
+                        renderLoop(window, &vao, &texture_id, program);
+                    } else {
+                        puts("Shader program linking error");
+                    }
+
+                    // Free stuff
+                    glDeleteProgram(program);
+                    freeShaders(vertex_shader, fragment_shader);
                 } else {
-                    puts("Shader program linking error");
+                    puts("Unable to initialize shaders");
                 }
-
-                // Free stuff
-                glDeleteProgram(program);
-                freeShaders(vertex_shader, fragment_shader);
             } else {
-                puts("Unable to initialize shaders");
+                puts("Unale to initalize textures");
             }
+            freeTextures(&texture_id);
 
             freeVertexArrays(&vao, &vbo);
             glfwDestroyWindow(window);
