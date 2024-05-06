@@ -24,5 +24,4 @@ void main() {
 	vec3 resultColor = min((ambientBrightness + diffuseIntensity + specularIntensity) * fColor, 1.0);
 
 	diffuseColor = texture(textureSampler, fTextureCoord) * vec4(resultColor, 1.0), 1.0;
-	//diffuseColor = texture(textureSampler, fTextureCoord) * max(vec4(resultColor, 1.0), 1.0);	
 }

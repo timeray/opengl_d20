@@ -9,264 +9,18 @@
 #include <cglm/cglm.h>
 
 #define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
+#include "stb_image.h"
+#include "icosahedron.h"
 
 #define VERTEX_SHADER_PATH "shaders/vertex_shader.glsl"
 #define FRAGMENT_SHADER_PATH "shaders/fragment_shader.glsl"
 #define TEXTURE_PATH "textures/d20_uv.png"
 #define WINDOW_NAME "D20"
-// Golden ratio (1 + sqrt(5)) / 2
-#define GR 1.6180339887498948482045868343656
-
-
-typedef struct {
-    GLfloat x, y, z;
-    GLfloat r, g, b;
-    //normal
-    GLfloat n[3];
-    // texture
-    GLfloat t_x, t_y;
-} Vertex;
-
-
-GLfloat getDistance(Vertex v1, Vertex v2) {
-    return sqrtf(powf(v1.x - v2.x, 2.0) + powf(v1.y - v2.y, 2.0) + powf(v1.z - v2.z, 2.0));
-}
-
-
-bool almostEqual(GLfloat v1, GLfloat v2) {
-    if (fabs(v1 - v2) < 0.001) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
-static mat4_to_mat3(mat4 m_in, mat3 m_out) {
-    for (size_t i = 0; i < 3; ++i) {
-        for (size_t j = 0; j < 3; ++j) {
-            m_out[i][j] = m_in[i][j];
-        }
-    }
-}
 
 
 // Control flags
 bool gSwitchWireMode = false;
-
-
-// Set icosahedron vertices
-// order is important for texturing
-Vertex gVertices[] = {
-    // positions        // colors
-    {0.0f,  1.0f,  GR,   1.0f, 0.0f, 0.0f}, // 0
-    {-GR, 0.0f,  1.0f,   0.5f, 0.5f, 1.0f}, // 1
-    {GR, 0.0f, -1.0f,   0.5f, 1.0f, 0.5f},  // 2
-    {0.0f, -1.0f, -GR,   1.0f, 0.0f, 1.0f}, // 3
-    {0.0f,  1.0f, -GR,   1.0f, 1.0f, 0.0f}, // 4    
-    {-1.0f,  GR, 0.0f,   0.0f, 0.5f, 1.0f}, // 5
-    {1.0f, -GR, 0.0f,   0.0f, 0.5f, 0.0f},  // 6
-    {0.0f, -1.0f,  GR,   0.0f, 0.0f, 1.0f}, // 7
-    {-1.0f, -GR, 0.0f,   1.0f, 0.0f, 1.0f}, // 8
-    {-GR, 0.0f, -1.0f,   1.0f, 0.0f, 1.0f}, // 9
-    {GR, 0.0f,  1.0f,   1.0f, 0.5f, 0.5f},  // 10
-    {1.0f,  GR, 0.0f,   1.0f, 1.0f, 0.0f},  // 11
-};
-
-
-typedef struct {
-    size_t id;
-    GLfloat x;
-    GLfloat y;
-    int neighbour1;
-    int neighbour2;
-} IcosahedronVertexTexturePosition;
-
-
-IcosahedronVertexTexturePosition gVerticesTexturePositions[] = {
-    { 0, 0.4287109375f, 1 - 0.212890625f, -1, -1},
-    { 1, 0.2392578125f, 1 -  0.212890625f, -1, -1},
-    { 2, 0.6181640625f, 1 -  0.541015625f, -1, -1},
-    { 3,    0.5234375f, 1 -  0.705078125f, -1, -1},
-    { 4, 0.4287109375f, 1 -  0.541015625f, -1, -1},
-    { 5,  0.333984375f, 1 -  0.376953125f, -1, -1},
-    { 6,  0.712890625f, 1 -  0.705078125f, -1, -1},
-    { 7,  0.333984375f, 1 - 0.0498046875f,  0,  1},
-    { 7,  0.333984375f, 1 - 0.0498046875f,  0, 10},
-    { 7,  0.333984375f, 1 - 0.0498046875f,  1,  8},
-    { 7, 0.8076171875f, 1 - 0.8681640625f,  6,  8},
-    { 7, 0.8076171875f, 1 - 0.8681640625f,  6, 10},
-    { 8,   0.14453125f, 1 - 0.0498046875f,  1,  7},
-    { 8,   0.14453125f, 1 - 0.0498046875f,  1,  9},
-    { 8, 0.6181640625f, 1 - 0.8681640625f,  3,  6},
-    { 8, 0.6181640625f, 1 - 0.8681640625f,  3,  9},
-    { 8, 0.6181640625f, 1 - 0.8681640625f,  6,  7},
-    { 9,   0.05078125f, 1 -  0.212890625f,  1,  8},
-    { 9, 0.1455078125f, 1 -  0.376953125f,  1,  5},
-    { 9,  0.240234375f, 1 -  0.541015625f,  4,  5},
-    { 9, 0.3349609375f, 1 -  0.705078125f,  3,  4},
-    { 9, 0.4287109375f, 1 - 0.8681640625f,  3,  8},
-    {10, 0.5224609375f, 1 - 0.0498046875f,  0,  7},
-    {10,    0.6171875f, 1 -  0.212890625f,  0, 11},
-    {10, 0.7119140625f, 1 -  0.376953125f,  2, 11},
-    {10,  0.806640625f, 1 -  0.541015625f,  2,  6},
-    {10, 0.9013671875f, 1 -  0.705078125f,  6,  7},
-    {11,    0.5234375f, 1 -  0.376953125f, -1, -1},
-};
-
-
-// Store 20 icosahedron faces, 3 vertices per face
-Vertex gTriangles[20 * 3];
-//Vertex gTriangles[] = {      
-//   {-0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f, -1.0f},
-//   { 0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f, -1.0f},
-//   { 0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f, -1.0f},         
-//   {-0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f, -1.0f},
-//   { 0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f, -1.0f},
-//   {-0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f, -1.0f},
-//      
-//   { 0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f,  1.0f},
-//   {-0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f,  1.0f},
-//   { 0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f,  1.0f},      
-//   { 0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f,  1.0f},
-//   {-0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f,  1.0f},
-//   {-0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  0.0f,  1.0f},
-//   
-//   {-0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f, -1.0f,  0.0f,  0.0f},
-//   {-0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f, -1.0f,  0.0f,  0.0f},
-//   {-0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 1.0f, -1.0f,  0.0f,  0.0f},      
-//   {-0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f, -1.0f,  0.0f,  0.0f},
-//   {-0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f, -1.0f,  0.0f,  0.0f},
-//   {-0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f, -1.0f,  0.0f,  0.0f},
-//         
-//   { 0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  1.0f,  0.0f,  0.0f},
-//   { 0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  1.0f,  0.0f,  0.0f},
-//   { 0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  1.0f,  0.0f,  0.0f},         
-//   { 0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  1.0f,  0.0f,  0.0f},
-//   { 0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  1.0f,  0.0f,  0.0f},
-//   { 0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  1.0f,  0.0f,  0.0f},
-//      
-//   {-0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f, -1.0f,  0.0f},
-//   { 0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f, -1.0f,  0.0f},
-//   { 0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f, -1.0f,  0.0f},      
-//   { 0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f, -1.0f,  0.0f},
-//   {-0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f, -1.0f,  0.0f},
-//   {-0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f, -1.0f,  0.0f},
-//   
-//   { 0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  1.0f,  0.0f},
-//   {-0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  1.0f,  0.0f},
-//   { 0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  1.0f,  0.0f},   
-//   {-0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  1.0f,  0.0f},
-//   { 0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  1.0f,  0.0f},
-//   {-0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 1.0f,  0.0f,  1.0f,  0.0f},
-//};
-
-
-void generateIcosahedronMeshFromVertices(void) {    
-    const size_t n_vertices = sizeof(gVertices) / sizeof(Vertex);
-    const size_t n_triangles = sizeof(gTriangles) / sizeof(Vertex);
-
-    size_t count = 0;
-    size_t n = 0;
-    for (size_t i = 0; i < n_vertices - 2; ++i) {
-        for (size_t j = i + 1; j < n_vertices - 1; ++j) {
-            for (size_t k = j + 1; k < n_vertices; ++k) {        
-                // All distances between vertices that form triangle in D20 should be equal to 2.0
-                if (!almostEqual(getDistance(gVertices[i], gVertices[j]), 2.0f)) {
-                    continue;
-                }
-                if (!almostEqual(getDistance(gVertices[i], gVertices[k]), 2.0f)) {
-                    continue;
-                }
-                if (!almostEqual(getDistance(gVertices[j], gVertices[k]), 2.0f)) {
-                    continue;
-                }
-
-                assert(count < n_triangles);
-                printf("ijk = %zu,%zu,%zu\n", i, j, k);
-
-                Vertex p1 = gVertices[i];
-                Vertex p2 = gVertices[j];
-                Vertex p3 = gVertices[k];
-
-                // Calculate the direction of the normal of the plane relative to origin
-                // to get the proper winding order (for face culling)
-                vec3 v1 = {p1.x - p2.x, p1.y - p2.y, p1.z - p2.z};
-                vec3 v2 = {p1.x - p3.x, p1.y - p3.y, p1.z - p3.z};
-
-                vec3 n;
-                glm_vec3_crossn(v1, v2, n);
-
-                // Constant of the plane equation
-                float c = p1.x * n[0] + p1.y * n[1] + p1.z * n[2];
-
-                // Save original vertices to form triangle
-                if (c > 0.0f) {
-                    gTriangles[count] = p1;
-                    gTriangles[count + 1] = p2;
-                    gTriangles[count + 2] = p3;
-                } else {
-                    gTriangles[count] = p2;
-                    gTriangles[count + 1] = p1;
-                    gTriangles[count + 2] = p3;
-                }
-
-                // Save normal vector in each vertex of a new triangle
-                // Reverse normal if it has wrong direction
-                for (size_t v = 0; v < 3; ++v) {
-                    for (size_t norm_i = 0; norm_i < 3; ++norm_i) {
-                        gTriangles[count + v].n[norm_i] = n[norm_i] * (c > 0.0f ? 1.0 : -1.0);
-                    }
-                }
-
-                // Save texture
-                // Find matching between new triangle and texture using texture array
-                size_t indices[3];
-                if (c > 0.0f) {
-                    indices[0] = i;
-                    indices[1] = j;
-                    indices[2] = k;
-                } else {
-                    indices[0] = j;
-                    indices[1] = i;
-                    indices[2] = k;
-                }
-                int first, second;
-                size_t n_vtex_positions = sizeof(gVerticesTexturePositions) / sizeof(IcosahedronVertexTexturePosition);
-                for (size_t v = 0; v < 3; ++v) {
-                    first = (v == 0) ? indices[1] : indices[0];
-                    second = (v == 2) ? indices[1] : indices[2];
-                    for (size_t t = 0; t < n_vtex_positions; ++t) {
-                        IcosahedronVertexTexturePosition t_pos = gVerticesTexturePositions[t];
-                        if (t_pos.id == indices[v]) {
-                            // If only one position for vertex is available
-                            // or neighbouring ids match
-                            printf("NB1 = %d (vs %d), NB2 = %d (vs %d)\n", t_pos.neighbour1, first, t_pos.neighbour2, second);
-                            if ((t_pos.neighbour1 == -1) 
-                                || ((t_pos.neighbour1 == first) && (t_pos.neighbour2 == second))
-                                || ((t_pos.neighbour1 == second) && (t_pos.neighbour2 == first))) {
-                                gTriangles[count + v].t_x = t_pos.x;
-                                gTriangles[count + v].t_y = t_pos.y;
-                                break;
-                            }
-                        }
-
-                        assert(t != (n_vtex_positions - 1));  // should break before that
-                    }
-                }                
-
-                // Offset counter by 3 vertices
-                count += 3;
-            }
-        }
-    }
-    for (size_t v = 0; v < 20 * 3; ++v) {
-        printf("[%zu] (x=%.1f,y=%.1f,z=%.1f), (n1=%.2f,n2=%.2f,n3=%.2f), (tx=%.2f, ty=%.2f)\n",
-               v, gTriangles[v].x, gTriangles[v].y, gTriangles[v].z,
-               gTriangles[v].n[0], gTriangles[v].n[1], gTriangles[v].n[2],
-               gTriangles[v].t_x, gTriangles[v].t_y);
-    }
-}
+bool gStartRoll = false;
 
 
 typedef enum {
@@ -285,6 +39,8 @@ static void keyCallback(GLFWwindow* window, int key, int scancode, int action, i
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     } else if (key == GLFW_KEY_L && action == GLFW_PRESS) {
         gSwitchWireMode = true;
+    } else if (key == GLFW_KEY_SPACE && action == GLFW_PRESS) {
+        gStartRoll = true;
     }
 }
 
@@ -322,7 +78,7 @@ void initVertexArrays(GLuint* vao_ptr, GLuint* vbo_ptr) {
 
     // Create buffer and upload values
     glCreateBuffers(1, vbo_ptr);
-    glNamedBufferStorage(*vbo_ptr, sizeof(gTriangles), &gTriangles, 0);
+    glNamedBufferStorage(*vbo_ptr, sizeof(gIcosahedronMesh), &gIcosahedronMesh, 0);
 
     // Bind array to the buffer
     glVertexArrayVertexBuffer(*vao_ptr, 0, *vbo_ptr, 0, sizeof(Vertex));
@@ -345,20 +101,8 @@ Status initTextures(const char* path, GLuint* texture_id) {
         glBindTexture(GL_TEXTURE_2D, *texture_id);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
         glGenerateMipmap(GL_TEXTURE_2D);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        //glCreateTextures(GL_TEXTURE_2D, 1, texture_id);
-        //glTextureStorage2D(*texture_id, 1, GL_RGB, width, height);
-        //glTextureSubImage2D(*texture_id, 0, 0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, data);
-        //glTextureParameteri(*texture_id, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        //glTextureParameteri(*texture_id, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        //glTextureParameteri(*texture_id, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        //glTextureParameteri(*texture_id, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        //glGenerateTextureMipmap(*texture_id);
     } else {
         status = STATUS_ERR;
     }
@@ -503,7 +247,7 @@ static void showFpsInWindowTitle(GLFWwindow* window) {
 
 void render(GLuint* vao_ptr, bool wireMode) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    size_t n = sizeof(gTriangles) / sizeof(Vertex);
+    size_t n = sizeof(gIcosahedronMesh) / sizeof(Vertex);
     if (wireMode == false) {
         for (size_t i = 0; i < 1; ++i) {
             glBindVertexArray(*vao_ptr);
@@ -530,6 +274,8 @@ static GLuint initUniformVariable(GLuint program, const char* name) {
 
 void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint program) {
     double prev_time = glfwGetTime();
+
+    // Settings
     float rot_speed_deg = 50;
     float scale = 0.7f;
     vec3 scale_vec = { scale, scale, scale };
@@ -553,6 +299,11 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint pro
     GLuint direct_brightness_id = initUniformVariable(program, "directBrightness");
     GLuint specular_brightness_id = initUniformVariable(program, "specularBrightness");
 
+    // Variables
+    int cur_dice_value = -1;
+    int cur_face_idx = -1;
+    bool is_rolling = false;
+
     while (!glfwWindowShouldClose(window)) {
         // Process flags for the iteration
         if (gSwitchWireMode) {
@@ -573,9 +324,32 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint pro
         mat4 model;
         glm_mat4_identity(model);
         glm_scale(model, scale_vec);
-        glm_rotate(model, glm_rad(rot_angle_deg), (vec3) { 0.0f, 1.0f, 0.0f });
-        glm_rotate(model, glm_rad(rot_angle_deg * 1.5), (vec3) { 0.0f, 0.0f, 1.0f });
-        glm_rotate(model, glm_rad(rot_angle_deg * 1.75), (vec3) { 1.0f, 0.0f, 0.0f });
+
+        if (gStartRoll) {
+            gStartRoll = false;
+            is_rolling = true;
+
+            cur_dice_value = rand() % 20 + 1;
+            printf("Rolled number: %d\n", cur_dice_value);
+            cur_face_idx = getIcosahedronFaceIndex(cur_dice_value);
+            printf("Face number: %d\n", cur_face_idx);
+        } 
+        if (is_rolling) {
+            Vertex first_vertex = gIcosahedronMesh[cur_face_idx * 3];
+            vec3 face_normal = { first_vertex.n[0], first_vertex.n[1], first_vertex.n[2] };
+            vec3 res_normal = { 0.0f, 0.0f, -1.0f };
+
+            vec3 rot_vec;
+            glm_cross(face_normal, res_normal, rot_vec);
+            GLfloat angle = glm_vec3_angle(face_normal, res_normal);
+
+            glm_rotate(model, angle, rot_vec);
+
+        } else {
+            glm_rotate(model, glm_rad(rot_angle_deg), (vec3) { 0.0f, 1.0f, 0.0f });
+            glm_rotate(model, glm_rad(rot_angle_deg * 1.5), (vec3) { 0.0f, 0.0f, 1.0f });
+            glm_rotate(model, glm_rad(rot_angle_deg * 1.75), (vec3) { 1.0f, 0.0f, 0.0f });
+        }
         glUniformMatrix4fv(model_id, 1, GL_FALSE, (float*)model);
 
         mat4 view;
@@ -592,7 +366,7 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint pro
         glm_mat4_inv(view_model, normal_matrix4);
         glm_mat4_transpose(normal_matrix4);
         mat3 normal_matrix;
-        mat4_to_mat3(normal_matrix4, normal_matrix);
+        glm_mat4_pick3(normal_matrix4, normal_matrix);
         glUniformMatrix3fv(normal_matrix_id, 1, GL_FALSE, (float*)normal_matrix);
 
         mat4 projection;
@@ -605,7 +379,7 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint pro
 
         // Lighting
         mat3 view_matrix3;
-        mat4_to_mat3(view, view_matrix3);
+        glm_mat4_pick3(view, view_matrix3);
         vec4 view_light_direction;
         glm_mat3_mulv(view_matrix3, light_direction, view_light_direction);
         glUniform3fv(light_dir_id, 1, (float*)view_light_direction);
@@ -614,8 +388,6 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint pro
         glUniform1f(specular_brightness_id, specular_brightness);
 
         // Texture
-        //glActiveTexture(GL_TEXTURE0);
-        //glBindTextureUnit(0, *tex_ptr);
         glBindTexture(GL_TEXTURE_2D, *tex_ptr);
 
         // Keep running until close button or Alt+F4        
@@ -635,7 +407,9 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint pro
 
 
 int main(void) {
-    generateIcosahedronMeshFromVertices();
+    initIcosahedronMeshFromVertices();
+
+    srand(42);
 
     puts("Initialize GLFW");
 

@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.15)
 # Set project name
 project(OpenGL_D20 VERSION 1.0)
 
-add_executable(d20 d20.c stb_image.h)
+add_executable(d20 d20.c icosahedron.c)
 add_custom_command(
 	TARGET d20 POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_directory
