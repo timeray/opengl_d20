@@ -93,10 +93,11 @@ void freeVertexArrays(GLuint* vao_ptr, GLuint* vbo_ptr) {
 
 Status initTextures(const char* path, GLuint* texture_id) {
     int width, height, n_channels;
-    unsigned char* data = stbi_load(path, &width, &height, &n_channels, 3);
+    unsigned char* data = stbi_load(path, &width, &height, &n_channels, 3);    
     Status status = STATUS_OK;
 
     if (data) {
+        printf("N CHAN = %d\n", n_channels);
         glGenTextures(1, texture_id);
         glBindTexture(GL_TEXTURE_2D, *texture_id);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
@@ -332,18 +333,33 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint pro
             cur_dice_value = rand() % 20 + 1;
             printf("Rolled number: %d\n", cur_dice_value);
             cur_face_idx = getIcosahedronFaceIndex(cur_dice_value);
-            printf("Face number: %d\n", cur_face_idx);
-        } 
+        }
         if (is_rolling) {
-            Vertex first_vertex = gIcosahedronMesh[cur_face_idx * 3];
-            vec3 face_normal = { first_vertex.n[0], first_vertex.n[1], first_vertex.n[2] };
-            vec3 res_normal = { 0.0f, 0.0f, -1.0f };
+            size_t face_vertex_idx = cur_face_idx * 3;
+
+            // Rotate face to positive Z direction
+            vec3 positive_z_vec = { 0.0f, 0.0f, 1.0f };
+            Vertex first_vertex = gIcosahedronMesh[face_vertex_idx];
+            vec3 face_normal = { first_vertex.n[0], first_vertex.n[1], first_vertex.n[2] };            
 
             vec3 rot_vec;
-            glm_cross(face_normal, res_normal, rot_vec);
-            GLfloat angle = glm_vec3_angle(face_normal, res_normal);
+            glm_cross(face_normal, positive_z_vec, rot_vec);
+            GLfloat rotation_angle = glm_vec3_angle(face_normal, positive_z_vec);            
 
-            glm_rotate(model, angle, rot_vec);
+            // Correct orientation
+            vec3 positive_y_vec = { 0.0f, 1.0f, 0.0f };            
+            Vertex orientation_vertex = gIcosahedronMesh[face_vertex_idx + getOrientationVertexIndex(cur_face_idx)];
+            vec3 orient_vec = { orientation_vertex.x, orientation_vertex.y, orientation_vertex.z };
+            glm_vec3_rotate(orient_vec, rotation_angle, rot_vec);  // rotate vector to new position
+            orient_vec[2] = 0.0f;  // projection on x-y plane            
+            GLfloat orientation_angle = glm_vec3_angle(orient_vec, positive_y_vec);
+            if (orient_vec[0] < 0.0f) {
+                orientation_angle *= -1;
+            }
+
+            // Perform transformations in reverse order
+            glm_rotate(model, orientation_angle, positive_z_vec);
+            glm_rotate(model, rotation_angle, rot_vec);
 
         } else {
             glm_rotate(model, glm_rad(rot_angle_deg), (vec3) { 0.0f, 1.0f, 0.0f });

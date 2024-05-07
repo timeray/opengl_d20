@@ -27,3 +27,4 @@ extern Vertex gIcosahedronMesh[20 * 3];
 
 void initIcosahedronMeshFromVertices(void);
 size_t getIcosahedronFaceIndex(size_t);
+size_t getOrientationVertexIndex(size_t);

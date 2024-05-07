@@ -27,6 +27,12 @@ static size_t gIcosahedronValueToFace[20] = {
 };
 
 
+// Orientation vertex for each triangle of the mesh
+static size_t gIcosahedronOrientationVertexIndex[20] = {
+    2, 0, 1, 2, 0, 1, 1, 2, 1, 2, 1, 0, 0, 2, 0, 0, 2, 1, 0, 2
+};
+
+
 // Set icosahedron vertices
 // order is important for texturing
 static Vertex gVertices[] = {
@@ -83,6 +89,10 @@ size_t getIcosahedronFaceIndex(size_t dice_value) {
     return gIcosahedronValueToFace[dice_value - 1];
 }
 
+size_t getOrientationVertexIndex(size_t face_index) {
+    return gIcosahedronOrientationVertexIndex[face_index];
+}
+
 
 static GLfloat getDistance(Vertex v1, Vertex v2) {
     return sqrtf(powf(v1.x - v2.x, 2.0) + powf(v1.y - v2.y, 2.0) + powf(v1.z - v2.z, 2.0));
@@ -127,8 +137,7 @@ void initIcosahedronMeshFromVertices(void) {
                     continue;
                 }
 
-                assert(count < n_triangles);
-                printf("[%d] ijk = %zu,%zu,%zu\n", (int)(count / 3), i, j, k);
+                assert(count < n_triangles);                
 
                 Vertex p1 = gVertices[i];
                 Vertex p2 = gVertices[j];
@@ -145,13 +154,17 @@ void initIcosahedronMeshFromVertices(void) {
                 // Constant of the plane equation
                 float c = p1.x * n[0] + p1.y * n[1] + p1.z * n[2];
 
+                printf("[%d] ijk = %zu,%zu,%zu -> %zu,%zu,%zu\n",
+                       (int)(count / 3),
+                       i, j, k,
+                       c > 0.0f ? i : j, c > 0.0f ? j : i, k);
+
                 // Save original vertices to form triangle
                 if (c > 0.0f) {
                     gIcosahedronMesh[count] = p1;
                     gIcosahedronMesh[count + 1] = p2;
                     gIcosahedronMesh[count + 2] = p3;
-                }
-                else {
+                } else {
                     gIcosahedronMesh[count] = p2;
                     gIcosahedronMesh[count + 1] = p1;
                     gIcosahedronMesh[count + 2] = p3;
@@ -172,8 +185,7 @@ void initIcosahedronMeshFromVertices(void) {
                     indices[0] = i;
                     indices[1] = j;
                     indices[2] = k;
-                }
-                else {
+                } else {
                     indices[0] = j;
                     indices[1] = i;
                     indices[2] = k;
