@@ -12,15 +12,17 @@
 #include "stb_image.h"
 #include "icosahedron.h"
 
-#define VERTEX_SHADER_PATH "shaders/vertex_shader.glsl"
-#define FRAGMENT_SHADER_PATH "shaders/fragment_shader.glsl"
-#define TEXTURE_PATH "textures/d20_uv.png"
-#define WINDOW_NAME "D20"
+
+const char VERTEX_SHADER_PATH[] = "shaders/vertex_shader.glsl";
+const char FRAGMENT_SHADER_PATH[] = "shaders/fragment_shader.glsl";
+const char TEXTURE_PATH[] = "textures/d20_uv.png";
+const char WINDOW_NAME[] = "D20";
 
 
 // Control flags
-bool gSwitchWireMode = false;
-bool gStartRoll = false;
+bool g_switch_wire_mode = false;
+bool g_start_roll = false;
+bool g_is_rolling = false;
 
 
 typedef enum {
@@ -34,13 +36,13 @@ void errorCallback(int error, const char* descr) {
 }
 
 
-static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     } else if (key == GLFW_KEY_L && action == GLFW_PRESS) {
-        gSwitchWireMode = true;
-    } else if (key == GLFW_KEY_SPACE && action == GLFW_PRESS) {
-        gStartRoll = true;
+        g_switch_wire_mode = true;
+    } else if (key == GLFW_KEY_SPACE && action == GLFW_PRESS && !g_is_rolling) {
+        g_start_roll = true;
     }
 }
 
@@ -121,7 +123,7 @@ void freeTextures(GLuint* texture_id) {
 * Loads shader code from path to output buffer outBuf
 * Caller must free(outBuf).
 */
-static Status loadShaderText(const char* path, char** outBuf) {
+Status loadShaderText(const char* path, char** outBuf) {
     FILE* file = fopen(path, "rb");
     if (!file) {
         puts("Unable to read file");
@@ -160,8 +162,8 @@ Status initShaders(GLuint* vertex_shader_ptr, GLuint* fragment_shader_ptr) {
     GLuint fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
 
     GLuint shaders[] = { vertex_shader, fragment_shader };
-    char* shader_paths[] = { VERTEX_SHADER_PATH, FRAGMENT_SHADER_PATH };
-    char* shader_name[] = { "Vertex shader", "Fragment shader" };
+    const char* shader_paths[] = { VERTEX_SHADER_PATH, FRAGMENT_SHADER_PATH };
+    const char* shader_name[] = { "Vertex shader", "Fragment shader" };
     bool is_shader_compiled[] = { false, false };
 
     Status status = STATUS_OK;
@@ -227,7 +229,7 @@ void freeShaders(GLuint vertex_shader, GLuint fragment_shader) {
 }
 
 
-static void showFpsInWindowTitle(GLFWwindow* window) {
+void showFpsInWindowTitle(GLFWwindow* window) {
     static double last_time = 0.0;
     static size_t n_frames = 0;
 
@@ -263,7 +265,19 @@ void render(GLuint* vao_ptr, bool wireMode) {
 }
 
 
-static GLuint initUniformVariable(GLuint program, const char* name) {
+typedef struct {
+    GLuint model_id;
+    GLuint normal_matrix_id;
+    GLuint view_id;
+    GLuint projection_id;
+    GLuint light_dir_id;
+    GLuint ambient_brightness_id;
+    GLuint direct_brightness_id;
+    GLuint specular_brightness_id;
+} UniformVariables;
+
+
+GLuint initUniformVariable(GLuint program, const char* name) {
     GLuint index = glGetUniformLocation(program, name);
     if (index == -1) {
         printf("Unable to get uniform variable with name: %s\n", name);
@@ -273,141 +287,191 @@ static GLuint initUniformVariable(GLuint program, const char* name) {
 }
 
 
-void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint program) {
+UniformVariables initUniformVariables(GLuint program) {
+    return (UniformVariables) {
+        .model_id = initUniformVariable(program, "model"),
+        .normal_matrix_id = initUniformVariable(program, "normalMatrix"),
+        .view_id = initUniformVariable(program, "view"),
+        .projection_id = initUniformVariable(program, "projection"),
+        .light_dir_id = initUniformVariable(program, "lightDirection"),
+        .ambient_brightness_id = initUniformVariable(program, "ambientBrightness"),
+        .direct_brightness_id = initUniformVariable(program, "directBrightness"),
+        .specular_brightness_id = initUniformVariable(program, "specularBrightness"),
+    };
+}
+
+
+typedef struct {
+    float scale;
+    float rot_speed_deg;
+    float fov_deg;
+    float camera_near_z;
+    float camera_far_z;
+
+    vec3 light_direction;
+    GLfloat direct_brightness;
+    GLfloat specular_brightness;
+    GLfloat ambient_brightness;
+
+    vec3 camera_position;
+} Settings;
+
+
+void setSceneUniformMatrices(Settings* settings_ptr, UniformVariables* uvars_ptr,
+                             versor rotation_quat, float aspect_ratio) {
+    // Create Model-View-Projection        
+    mat4 model;
+    glm_mat4_identity(model);
+    glm_scale(model, (vec3) { settings_ptr->scale, settings_ptr->scale, settings_ptr->scale });
+    glm_quat_rotate(model, rotation_quat, model);  // apply model rotation for current frame
+    glUniformMatrix4fv(uvars_ptr->model_id, 1, GL_FALSE, (float*)model);
+
+    mat4 view;
+    glm_mat4_identity(view);
+    glm_translate(view, settings_ptr->camera_position);
+    glUniformMatrix4fv(uvars_ptr->view_id, 1, GL_FALSE, (float*)view);
+
+    mat4 view_model;
+    glm_mat4_mul(view, model, view_model);
+
+    mat4 normal_matrix4;
+    glm_mat4_inv(view_model, normal_matrix4);
+    glm_mat4_transpose(normal_matrix4);
+    mat3 normal_matrix;
+    glm_mat4_pick3(normal_matrix4, normal_matrix);
+    glUniformMatrix3fv(uvars_ptr->normal_matrix_id, 1, GL_FALSE, (float*)normal_matrix);
+
+    mat4 projection;    
+    //glm_ortho_default(aspect_ratio, projection);
+    glm_perspective(glm_rad(settings_ptr->fov_deg), aspect_ratio, settings_ptr->camera_near_z,
+                    settings_ptr->camera_far_z, projection);
+    glUniformMatrix4fv(uvars_ptr->projection_id, 1, GL_FALSE, (float*)projection);
+
+    // Lighting
+    mat3 view_matrix3;
+    glm_mat4_pick3(view, view_matrix3);
+    vec4 view_light_direction = { 0.0f };
+    vec3 norm_light_direction;
+    glm_vec3_copy(settings_ptr->light_direction, norm_light_direction);;
+    glm_normalize(norm_light_direction);
+    glm_mat3_mulv(view_matrix3, norm_light_direction, view_light_direction);
+    glUniform3fv(uvars_ptr->light_dir_id, 1, (float*)view_light_direction);
+    glUniform1f(uvars_ptr->ambient_brightness_id, settings_ptr->ambient_brightness);
+    glUniform1f(uvars_ptr->direct_brightness_id, settings_ptr->direct_brightness);
+    glUniform1f(uvars_ptr->specular_brightness_id, settings_ptr->specular_brightness);
+}
+
+
+void getDiceRollQuaternion(int dice_value, versor q) {
+    int face_idx = getIcosahedronFaceIndex(dice_value);
+
+    size_t face_vertex_idx = face_idx * 3;
+
+    // Rotate face to positive Z direction
+    vec3 positive_z_vec = { 0.0f, 0.0f, 1.0f };
+    Vertex first_vertex = gIcosahedronMesh[face_vertex_idx];
+    vec3 face_normal = { first_vertex.n[0], first_vertex.n[1], first_vertex.n[2] };
+
+    versor q_rot;
+    glm_quat_from_vecs(face_normal, positive_z_vec, q_rot);
+
+    // Correct orientation
+    vec3 positive_y_vec = { 0.0f, 1.0f, 0.0f };
+    Vertex orientation_vertex = gIcosahedronMesh[face_vertex_idx + getOrientationVertexIndex(face_idx)];
+    vec3 orient_vec = { orientation_vertex.x, orientation_vertex.y, orientation_vertex.z };
+    glm_quat_rotatev(q_rot, orient_vec, orient_vec);
+    orient_vec[2] = 0.0f;
+    GLfloat orientation_angle = glm_vec3_angle(orient_vec, positive_y_vec);
+    if (orient_vec[0] < 0.0f) {
+        orientation_angle *= -1;
+    }
+
+    // We manually find and specify axis-angle to handle case when orient_vec = -positive_y_vec
+    versor q_orient;
+    glm_quatv(q_orient, orientation_angle, positive_z_vec);
+
+    // Perform transformations in reverse order
+    glm_quat_mul(q_orient, q_rot, q);
+}
+
+
+void getIdleAnimationQuaternion(float time_delta, float rot_speed_deg, versor q) {
+    static float rot_angle_deg = 0.0f;
+    rot_angle_deg += rot_speed_deg * time_delta;
+
+    versor q1, q2, q3;
+    glm_quatv(q1, glm_rad(rot_angle_deg), (vec3) { 0.0f, 1.0f, 0.0f });
+    glm_quatv(q2, glm_rad(rot_angle_deg * 1.5), (vec3) { 0.0f, 0.0f, 1.0f });
+    glm_quatv(q3, glm_rad(rot_angle_deg * 1.75), (vec3) { 1.0f, 0.0f, 0.0f });
+
+    glm_quat_mul(q2, q3, q2);
+    glm_quat_mul(q1, q2, q);
+}
+
+
+void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint program,
+                Settings settings, UniformVariables uvars) {
     double prev_time = glfwGetTime();
 
-    // Settings
-    float rot_speed_deg = 50;
-    float scale = 0.7f;
-    vec3 scale_vec = { scale, scale, scale };
-    bool wireMode = false;
+    bool wire_mode = false;
+    bool is_in_idle_animation = true;
 
-    vec3 light_direction = { 1.0f, 1.0f, 2.0f };
-    glm_normalize(light_direction);
-    GLfloat direct_brightness = 1.0;
-    GLfloat specular_brightness = 0.5;
-    GLfloat ambient_brightness = 0.2;
-
-    vec3 camera_position = { 0.0f, 0.0f, -5.0f };
-
-    // Get uniform variables ID from shaders
-    GLuint model_id = initUniformVariable(program, "model");
-    GLuint normal_matrix_id = initUniformVariable(program, "normalMatrix");
-    GLuint view_id = initUniformVariable(program, "view");
-    GLuint projection_id = initUniformVariable(program, "projection");
-    GLuint light_dir_id = initUniformVariable(program, "lightDirection");
-    GLuint ambient_brightness_id = initUniformVariable(program, "ambientBrightness");
-    GLuint direct_brightness_id = initUniformVariable(program, "directBrightness");
-    GLuint specular_brightness_id = initUniformVariable(program, "specularBrightness");
-
-    // Variables
-    int cur_dice_value = -1;
-    int cur_face_idx = -1;
-    bool is_rolling = false;
+    versor q_prev, q_new, q_cur;
+    float t = 0.0f;
+    glm_quatv(q_prev, 0.0f, (vec3) {0.0f, 1.0f, 0.0f});
 
     while (!glfwWindowShouldClose(window)) {
         // Process flags for the iteration
-        if (gSwitchWireMode) {
-            gSwitchWireMode = false;
-            wireMode = !wireMode;
+        if (g_switch_wire_mode) {
+            g_switch_wire_mode = false;
+            wire_mode = !wire_mode;
         }
 
-        // logging
+        // Logging
         showFpsInWindowTitle(window);
 
-        // Geometry        
-        // Create transformation matrix
+        // Advance time
         double cur_time = glfwGetTime();
         double delta = cur_time - prev_time;
+        prev_time = cur_time;
 
-        float rot_angle_deg = rot_speed_deg * delta;
+        // Whether to start a new roll
+        if (g_start_roll) {
+            is_in_idle_animation = false;
+            g_start_roll = false;
+            g_is_rolling = true;
+            t = 0.0f;
+            glm_quat_copy(q_cur, q_prev);
 
-        mat4 model;
-        glm_mat4_identity(model);
-        glm_scale(model, scale_vec);
-
-        if (gStartRoll) {
-            gStartRoll = false;
-            is_rolling = true;
-
-            cur_dice_value = rand() % 20 + 1;
-            printf("Rolled number: %d\n", cur_dice_value);
-            cur_face_idx = getIcosahedronFaceIndex(cur_dice_value);
+            int dice_value = rand() % 20 + 1;
+            printf("Rolled number: %d\n", dice_value);
+            getDiceRollQuaternion(dice_value, q_new);
         }
-        if (is_rolling) {
-            size_t face_vertex_idx = cur_face_idx * 3;
 
-            // Rotate face to positive Z direction
-            vec3 positive_z_vec = { 0.0f, 0.0f, 1.0f };
-            Vertex first_vertex = gIcosahedronMesh[face_vertex_idx];
-            vec3 face_normal = { first_vertex.n[0], first_vertex.n[1], first_vertex.n[2] };            
-
-            vec3 rot_vec;
-            glm_cross(face_normal, positive_z_vec, rot_vec);
-            GLfloat rotation_angle = glm_vec3_angle(face_normal, positive_z_vec);            
-
-            // Correct orientation
-            vec3 positive_y_vec = { 0.0f, 1.0f, 0.0f };            
-            Vertex orientation_vertex = gIcosahedronMesh[face_vertex_idx + getOrientationVertexIndex(cur_face_idx)];
-            vec3 orient_vec = { orientation_vertex.x, orientation_vertex.y, orientation_vertex.z };
-            glm_vec3_rotate(orient_vec, rotation_angle, rot_vec);  // rotate vector to new position
-            orient_vec[2] = 0.0f;  // projection on x-y plane            
-            GLfloat orientation_angle = glm_vec3_angle(orient_vec, positive_y_vec);
-            if (orient_vec[0] < 0.0f) {
-                orientation_angle *= -1;
-            }
-
-            // Perform transformations in reverse order
-            glm_rotate(model, orientation_angle, positive_z_vec);
-            glm_rotate(model, rotation_angle, rot_vec);
-
+        if (is_in_idle_animation) {
+            // Idle animation
+            getIdleAnimationQuaternion(delta, settings.rot_speed_deg, q_cur);
         } else {
-            glm_rotate(model, glm_rad(rot_angle_deg), (vec3) { 0.0f, 1.0f, 0.0f });
-            glm_rotate(model, glm_rad(rot_angle_deg * 1.5), (vec3) { 0.0f, 0.0f, 1.0f });
-            glm_rotate(model, glm_rad(rot_angle_deg * 1.75), (vec3) { 1.0f, 0.0f, 0.0f });
+            // Interpolate frame rotation from previous position to desired position
+            t += delta;  // one rotation per second            
+            glm_quat_slerp(q_prev, q_new, glm_min(t, 1.0), q_cur);
+
+            // After a roll, unable a new roll
+            if (g_is_rolling && t > 1.0f) {
+                g_is_rolling = false;
+            }
         }
-        glUniformMatrix4fv(model_id, 1, GL_FALSE, (float*)model);
 
-        mat4 view;
-        glm_mat4_identity(view);
-        glm_translate(view, camera_position);
-        //glm_rotate(view, glm_rad(rot_angle_deg), (vec3) { 1.0f, 0.0f, 0.0f });
-        //glm_rotate(view, glm_rad(rot_angle_deg), (vec3) { 0.0f, 1.0f, 0.0f });
-        glUniformMatrix4fv(view_id, 1, GL_FALSE, (float*)view);
-
-        mat4 view_model;
-        glm_mat4_mul(view, model, view_model);
-
-        mat4 normal_matrix4;
-        glm_mat4_inv(view_model, normal_matrix4);
-        glm_mat4_transpose(normal_matrix4);
-        mat3 normal_matrix;
-        glm_mat4_pick3(normal_matrix4, normal_matrix);
-        glUniformMatrix3fv(normal_matrix_id, 1, GL_FALSE, (float*)normal_matrix);
-
-        mat4 projection;
         int win_width, win_height;
         glfwGetWindowSize(window, &win_width, &win_height);
         float aspect_ratio = (float)win_width / (float)win_height;
-        //glm_ortho_default(aspect_ratio, projection);
-        glm_perspective(glm_rad(45.0f), aspect_ratio, 0.1f, 100.0f, projection);
-        glUniformMatrix4fv(projection_id, 1, GL_FALSE, (float*)projection);
-
-        // Lighting
-        mat3 view_matrix3;
-        glm_mat4_pick3(view, view_matrix3);
-        vec4 view_light_direction;
-        glm_mat3_mulv(view_matrix3, light_direction, view_light_direction);
-        glUniform3fv(light_dir_id, 1, (float*)view_light_direction);
-        glUniform1f(ambient_brightness_id, ambient_brightness);
-        glUniform1f(direct_brightness_id, direct_brightness);
-        glUniform1f(specular_brightness_id, specular_brightness);
+        setSceneUniformMatrices(&settings, &uvars, q_cur, aspect_ratio);
 
         // Texture
         glBindTexture(GL_TEXTURE_2D, *tex_ptr);
 
         // Keep running until close button or Alt+F4        
-        render(vao_ptr, wireMode);
+        render(vao_ptr, wire_mode);
 
         // Swap front buffer (display) with back buffer (where we render to)
         glfwSwapBuffers(window);
@@ -423,6 +487,19 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint pro
 
 
 int main(void) {
+    Settings settings = {
+        .scale = 0.7f,
+        .rot_speed_deg = 50.0f,
+        .fov_deg = 45.0f,
+        .camera_near_z = 0.1f,
+        .camera_far_z = 100.0f,
+        .light_direction = { 1.0f, 1.0f, 2.0f },
+        .direct_brightness = 1.0f,
+        .specular_brightness = 0.5f,
+        .ambient_brightness = 0.2f,
+        .camera_position = { 0.0f, 0.0f, -5.0f }
+    };
+
     initIcosahedronMeshFromVertices();
 
     srand(42);
@@ -464,7 +541,9 @@ int main(void) {
                         // We use only one set of shaders, so we can call glUseProgram only once
                         glUseProgram(program);
 
-                        renderLoop(window, &vao, &texture_id, program);
+                        UniformVariables uvars = initUniformVariables(program);
+
+                        renderLoop(window, &vao, &texture_id, program, settings, uvars);
                     } else {
                         puts("Shader program linking error");
                     }
