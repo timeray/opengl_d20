@@ -395,7 +395,16 @@ void getDiceRollQuaternion(int dice_value, versor q) {
 }
 
 
-void getIdleAnimationQuaternion(float time_delta, float rot_speed_deg, versor q) {
+void getRandomRollQuaternion(versor q) {
+    q[0] = (float)rand() / (float)rand();
+    q[1] = (float)rand() / (float)rand();
+    q[2] = (float)rand() / (float)rand();
+    q[3] = 0.0f;
+    glm_quat_normalize(q);
+}
+
+
+void getIdleAnimationQuaternion(float time_delta, float rot_speed_deg, versor q_out) {
     static float rot_angle_deg = 0.0f;
     rot_angle_deg += rot_speed_deg * time_delta;
 
@@ -405,7 +414,58 @@ void getIdleAnimationQuaternion(float time_delta, float rot_speed_deg, versor q)
     glm_quatv(q3, glm_rad(rot_angle_deg * 1.75), (vec3) { 1.0f, 0.0f, 0.0f });
 
     glm_quat_mul(q2, q3, q2);
-    glm_quat_mul(q1, q2, q);
+    glm_quat_mul(q1, q2, q_out);
+}
+
+
+typedef enum {
+    ROLL_N_ROTATIONS = 3
+};
+
+
+typedef struct {
+    size_t cur_n;
+    versor q_arr[ROLL_N_ROTATIONS];
+    double t;
+    versor q_prev;
+    bool hasFinished;
+} RollAnimationState;
+
+
+void resetRollAnimationState(RollAnimationState* state_ptr) {
+    state_ptr->cur_n = 0;
+    state_ptr->t = 0.0;
+    glm_quatv(state_ptr->q_prev, 0.0f, (vec3) { 0.0f, 1.0f, 0.0f });
+    state_ptr->hasFinished = false;
+}
+
+
+void fillRollAnimationQueue(RollAnimationState* state_ptr, size_t dice_value) {
+    for (size_t n = 0; n < ROLL_N_ROTATIONS - 1; ++n) {
+        getRandomRollQuaternion(state_ptr->q_arr[n]);
+    }
+    getDiceRollQuaternion(dice_value, state_ptr->q_arr[ROLL_N_ROTATIONS - 1]);
+}
+
+
+void getRollAnimationQuaternion(float time_delta, RollAnimationState* state_ptr, versor q_out) {
+    // Perform n rotations before moving to final position
+    if (state_ptr->cur_n < ROLL_N_ROTATIONS) {
+        state_ptr->t += time_delta;  // one rotation per second            
+
+        // Interpolate frame rotation from previous position to desired position
+        glm_quat_slerp(state_ptr->q_prev, state_ptr->q_arr[state_ptr->cur_n], glm_min(state_ptr->t, 1.0), q_out);
+
+        if (state_ptr->t >= 1.0) {
+            state_ptr->cur_n += 1;
+            state_ptr->t = 0.0f;
+            glm_quat_copy(q_out, state_ptr->q_prev);
+        }
+        state_ptr->hasFinished = false;
+    } else {
+        glm_quat_copy(state_ptr->q_arr[state_ptr->cur_n - 1], q_out);
+        state_ptr->hasFinished = true;
+    }
 }
 
 
@@ -416,9 +476,9 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint pro
     bool wire_mode = false;
     bool is_in_idle_animation = true;
 
-    versor q_prev, q_new, q_cur;
-    float t = 0.0f;
-    glm_quatv(q_prev, 0.0f, (vec3) {0.0f, 1.0f, 0.0f});
+    versor rot_quat;
+    RollAnimationState roll_anim_state;
+    resetRollAnimationState(&roll_anim_state);
 
     while (!glfwWindowShouldClose(window)) {
         // Process flags for the iteration
@@ -440,32 +500,32 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint pro
             is_in_idle_animation = false;
             g_start_roll = false;
             g_is_rolling = true;
-            t = 0.0f;
-            glm_quat_copy(q_cur, q_prev);
+            resetRollAnimationState(&roll_anim_state);
+            glm_quat_copy(rot_quat, roll_anim_state.q_prev);
 
-            int dice_value = rand() % 20 + 1;
-            printf("Rolled number: %d\n", dice_value);
-            getDiceRollQuaternion(dice_value, q_new);
+            size_t dice_value = (size_t)(rand() % 20 + 1);
+            printf("Rolled number: %zu\n", dice_value);
+            fillRollAnimationQueue(&roll_anim_state, dice_value);
         }
 
+        // Animation
         if (is_in_idle_animation) {
             // Idle animation
-            getIdleAnimationQuaternion(delta, settings.rot_speed_deg, q_cur);
+            getIdleAnimationQuaternion(delta, settings.rot_speed_deg, rot_quat);
         } else {
-            // Interpolate frame rotation from previous position to desired position
-            t += delta;  // one rotation per second            
-            glm_quat_slerp(q_prev, q_new, glm_min(t, 1.0), q_cur);
+            getRollAnimationQuaternion(delta, &roll_anim_state, rot_quat);
 
-            // After a roll, unable a new roll
-            if (g_is_rolling && t > 1.0f) {
+            // After a roll, enable rolling
+            if (g_is_rolling && roll_anim_state.hasFinished) {
                 g_is_rolling = false;
             }
         }
 
+        // Fill uniform matrices for shaders
         int win_width, win_height;
         glfwGetWindowSize(window, &win_width, &win_height);
         float aspect_ratio = (float)win_width / (float)win_height;
-        setSceneUniformMatrices(&settings, &uvars, q_cur, aspect_ratio);
+        setSceneUniformMatrices(&settings, &uvars, rot_quat, aspect_ratio);
 
         // Texture
         glBindTexture(GL_TEXTURE_2D, *tex_ptr);
