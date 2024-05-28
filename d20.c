@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <math.h>
+#include <time.h>
 
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
@@ -302,8 +303,21 @@ UniformVariables initUniformVariables(GLuint program) {
 
 
 typedef struct {
+    float idle_rot_speed;  // deg/sec
+
+    // Roll animation settings
+    // Number of points should be way more than number of rotations
+    // in order to avoid phase wrapping which leads to movement in wrong direction
+    size_t n_rotations;
+    size_t n_points;
+    float max_rot_speed;  // deg/sec
+    float min_rot_speed;  // deg/sec
+    float deaceleration;  // deg/sec
+} AnimationSettings;
+
+
+typedef struct {
     float scale;
-    float rot_speed_deg;
     float fov_deg;
     float camera_near_z;
     float camera_far_z;
@@ -314,6 +328,8 @@ typedef struct {
     GLfloat ambient_brightness;
 
     vec3 camera_position;
+
+    AnimationSettings anim;
 } Settings;
 
 
@@ -362,7 +378,7 @@ void setSceneUniformMatrices(Settings* settings_ptr, UniformVariables* uvars_ptr
 }
 
 
-void getDiceRollQuaternion(int dice_value, versor q) {
+void getDiceRollQuaternion(int dice_value, versor q_out) {
     int face_idx = getIcosahedronFaceIndex(dice_value);
 
     size_t face_vertex_idx = face_idx * 3;
@@ -391,16 +407,16 @@ void getDiceRollQuaternion(int dice_value, versor q) {
     glm_quatv(q_orient, orientation_angle, positive_z_vec);
 
     // Perform transformations in reverse order
-    glm_quat_mul(q_orient, q_rot, q);
+    glm_quat_mul(q_orient, q_rot, q_out);
 }
 
 
-void getRandomRollQuaternion(versor q) {
-    q[0] = (float)rand() / (float)rand();
-    q[1] = (float)rand() / (float)rand();
-    q[2] = (float)rand() / (float)rand();
-    q[3] = 0.0f;
-    glm_quat_normalize(q);
+void getRandomRollQuaternion(versor q_out) {
+    q_out[0] = (float)rand() / (float)rand();
+    q_out[1] = (float)rand() / (float)rand();
+    q_out[2] = (float)rand() / (float)rand();
+    q_out[3] = 0.0f;
+    glm_quat_normalize(q_out);
 }
 
 
@@ -418,18 +434,32 @@ void getIdleAnimationQuaternion(float time_delta, float rot_speed_deg, versor q_
 }
 
 
-typedef enum {
-    ROLL_N_ROTATIONS = 3
-};
+float getRollAngleDeltaRad(AnimationSettings* settings_ptr) {
+    return settings_ptr->n_rotations * 2 * M_PI / settings_ptr->n_points;
+}
 
 
 typedef struct {
     size_t cur_n;
-    versor q_arr[ROLL_N_ROTATIONS];
+    versor* q_arr;
     double t;
     versor q_prev;
+    float cur_speed_rad_per_sec;
     bool hasFinished;
 } RollAnimationState;
+
+
+RollAnimationState initRollAnimationState(size_t roll_points_num) {
+    RollAnimationState state;
+    state.q_arr = malloc(sizeof(versor) * roll_points_num);
+    return state;
+}
+
+
+void deleteRollAnimationState(RollAnimationState* state_ptr) {
+    free(state_ptr->q_arr);
+}
+
 
 
 void resetRollAnimationState(RollAnimationState* state_ptr) {
@@ -440,18 +470,50 @@ void resetRollAnimationState(RollAnimationState* state_ptr) {
 }
 
 
-void fillRollAnimationQueue(RollAnimationState* state_ptr, size_t dice_value) {
-    for (size_t n = 0; n < ROLL_N_ROTATIONS - 1; ++n) {
-        getRandomRollQuaternion(state_ptr->q_arr[n]);
-    }
-    getDiceRollQuaternion(dice_value, state_ptr->q_arr[ROLL_N_ROTATIONS - 1]);
+void fillRollAnimationQueue(RollAnimationState* state_ptr, AnimationSettings* anim_settings_ptr, size_t dice_value) {
+    const size_t n_rotations = anim_settings_ptr->n_rotations;
+    const size_t n_points = anim_settings_ptr->n_points;
+    const float roll_angle_delta_rad = getRollAngleDeltaRad(anim_settings_ptr);
+
+    getDiceRollQuaternion(dice_value, state_ptr->q_arr[n_points - 1]);
+
+    versor q;
+    vec3 axis;
+    float angle, added_angle = 0.0f;
+
+    for (size_t n = 0; n < n_points - 1; ++n) {
+        float t = (float)n / (n_points - 1);
+        glm_quat_slerp(state_ptr->q_prev, state_ptr->q_arr[n_points - 1], t, q);
+
+        added_angle += roll_angle_delta_rad;
+
+        angle = glm_quat_angle(q) + added_angle;
+        glm_quat_axis(q, axis);
+
+        glm_quatv(state_ptr->q_arr[n], angle, axis);
+    }    
 }
 
 
-void getRollAnimationQuaternion(float time_delta, RollAnimationState* state_ptr, versor q_out) {
+void getRollAnimationQuaternion(float time_delta, AnimationSettings* settings_ptr,
+                                RollAnimationState* state_ptr, versor q_out) {
+    const size_t n_points = settings_ptr->n_points;
+    const float roll_angle_delta_rad = getRollAngleDeltaRad(settings_ptr);
+
+    // Determine speed
+    if (state_ptr->cur_n <= n_points / 2) {
+        state_ptr->cur_speed_rad_per_sec = glm_rad(settings_ptr->max_rot_speed);
+    } else {
+        state_ptr->cur_speed_rad_per_sec = glm_max(
+            glm_rad(settings_ptr->min_rot_speed),
+            state_ptr->cur_speed_rad_per_sec - glm_rad(settings_ptr->deaceleration) * time_delta
+        );
+    }
+
     // Perform n rotations before moving to final position
-    if (state_ptr->cur_n < ROLL_N_ROTATIONS) {
-        state_ptr->t += time_delta;  // one rotation per second            
+    if (state_ptr->cur_n < n_points) {
+        // ROLL_ANGLE_DELTA_RAD - rotaion angle per one position
+        state_ptr->t += time_delta * state_ptr->cur_speed_rad_per_sec / roll_angle_delta_rad;
 
         // Interpolate frame rotation from previous position to desired position
         glm_quat_slerp(state_ptr->q_prev, state_ptr->q_arr[state_ptr->cur_n], glm_min(state_ptr->t, 1.0), q_out);
@@ -477,7 +539,7 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint pro
     bool is_in_idle_animation = true;
 
     versor rot_quat;
-    RollAnimationState roll_anim_state;
+    RollAnimationState roll_anim_state = initRollAnimationState(settings.anim.n_points);
     resetRollAnimationState(&roll_anim_state);
 
     while (!glfwWindowShouldClose(window)) {
@@ -505,15 +567,15 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint pro
 
             size_t dice_value = (size_t)(rand() % 20 + 1);
             printf("Rolled number: %zu\n", dice_value);
-            fillRollAnimationQueue(&roll_anim_state, dice_value);
+            fillRollAnimationQueue(&roll_anim_state, &settings.anim, dice_value);
         }
 
         // Animation
         if (is_in_idle_animation) {
             // Idle animation
-            getIdleAnimationQuaternion(delta, settings.rot_speed_deg, rot_quat);
+            getIdleAnimationQuaternion(delta, settings.anim.idle_rot_speed, rot_quat);
         } else {
-            getRollAnimationQuaternion(delta, &roll_anim_state, rot_quat);
+            getRollAnimationQuaternion(delta, &settings.anim, &roll_anim_state, rot_quat);
 
             // After a roll, enable rolling
             if (g_is_rolling && roll_anim_state.hasFinished) {
@@ -543,13 +605,24 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint pro
         // Communicate with the window system to received events and show that applications hasn't locked up 
         glfwPollEvents();
     }
+
+    deleteRollAnimationState(&roll_anim_state);
 }
 
 
 int main(void) {
+    AnimationSettings roll_anim_settings = {
+        .idle_rot_speed = 50.0f,
+
+        .n_rotations = 5,
+        .n_points = 50,
+        .max_rot_speed = 450.0f,
+        .min_rot_speed = 100.0f,
+        .deaceleration = 150.0f,
+    };
+
     Settings settings = {
         .scale = 0.7f,
-        .rot_speed_deg = 50.0f,
         .fov_deg = 45.0f,
         .camera_near_z = 0.1f,
         .camera_far_z = 100.0f,
@@ -557,12 +630,13 @@ int main(void) {
         .direct_brightness = 1.0f,
         .specular_brightness = 0.5f,
         .ambient_brightness = 0.2f,
-        .camera_position = { 0.0f, 0.0f, -5.0f }
+        .camera_position = { 0.0f, 0.0f, -5.0f },
+        .anim = roll_anim_settings
     };
 
     initIcosahedronMeshFromVertices();
 
-    srand(42);
+    srand(time(NULL));
 
     puts("Initialize GLFW");
 
@@ -583,7 +657,8 @@ int main(void) {
             glEnable(GL_DEPTH_TEST);
             glEnable(GL_CULL_FACE);
 
-            // Allocate buffers and vertex arrays (buffer layouts) to store vertex data (and not send this data on every render)
+            // Allocate buffers and vertex arrays (buffer layouts) to store vertex data 
+            // (and not send this data on every render)
             GLuint vao = 0, vbo = 0;
             initVertexArrays(&vao, &vbo);
 
