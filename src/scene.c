@@ -9,9 +9,9 @@
 #include "shader.h"
 
 
-static const char VERTEX_SHADER_PATH[] = "shaders/vertex_shader.glsl";
-static const char FRAGMENT_SHADER_PATH[] = "shaders/fragment_shader.glsl";
-const char TEXTURE_PATH[] = "textures/d20_uv.png";
+static const char VERTEX_SHADER_PATH[] = "resources/shaders/vertex_shader.glsl";
+static const char FRAGMENT_SHADER_PATH[] = "resources/shaders/fragment_shader.glsl";
+const char TEXTURE_PATH[] = "resources/textures/d20_uv.png";
 
 
 static Status initVertexArray(GLuint* vao_ptr, GLuint* vbo_ptr) {

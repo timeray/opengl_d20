@@ -4,9 +4,9 @@
 #include "text.h"
 
 
-static const char VERTEX_SHADER_PATH[] = "shaders/text_vertex_shader.glsl";
-static const char FRAGMENT_SHADER_PATH[] = "shaders/text_fragment_shader.glsl";
-const char TEXT_FONT_PATH[] = "fonts/arial.ttf";
+static const char VERTEX_SHADER_PATH[] = "resources/shaders/text_vertex_shader.glsl";
+static const char FRAGMENT_SHADER_PATH[] = "resources/shaders/text_fragment_shader.glsl";
+const char TEXT_FONT_PATH[] = "resources/fonts/arial.ttf";
 
 
 static Status initVertexArray(GLuint* vao_ptr, GLuint* vbo_ptr) {
