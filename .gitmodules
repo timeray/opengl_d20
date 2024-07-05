@@ -1,3 +1,9 @@
 [submodule "external/freetype"]
 	path = external/freetype
 	url = git@github.com:freetype/freetype.git
+[submodule "external/glfw"]
+	path = external/glfw
+	url = git@github.com:glfw/glfw.git
+[submodule "external/cglm"]
+	path = external/cglm
+	url = git@github.com:recp/cglm.git
