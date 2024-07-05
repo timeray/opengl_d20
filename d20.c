@@ -108,7 +108,7 @@ void computeLightingGeometry(mat4 scene_view, vec3 scene_direction, vec3 out_dir
 }
 
 
-void computeTextGeometry(Settings* settings_ptr, float width, float height, mat4 projection) {
+void computeTextGeometry(float width, float height, mat4 projection) {
     glm_ortho(0.0f, width, 0.0f, height, 0.0f, 1.0f, projection);
 }
 
@@ -155,7 +155,7 @@ void showFpsInWindowTitle(GLFWwindow* window) {
 }
 
 
-void renderDice(Dice* dice_ptr, Settings* settings_ptr, versor rot_quat, float aspect_ratio, bool wireMode) {
+void renderDice(SceneRenderer* dice_ptr, Settings* settings_ptr, versor rot_quat, float aspect_ratio, bool wireMode) {
     glUseProgram(dice_ptr->shader.id);
     mat4 model, view, projection;
     mat3 normal_matrix;
@@ -178,24 +178,24 @@ void renderDice(Dice* dice_ptr, Settings* settings_ptr, versor rot_quat, float a
 }
 
 
-void renderText(Text* text_ptr, Settings* settings_ptr, const char* text, float x, float y,
-                float window_width, float window_height) {
-    glUseProgram(text_ptr->shader.id);
+void renderText(TextRenderer* renderer_ptr, const char* text, vec3 color, float size,
+                float x, float y, float window_width, float window_height) {
+    glUseProgram(renderer_ptr->shader.id);
     mat4 text_projection;
-    computeTextGeometry(settings_ptr, window_width, window_height, text_projection);
-    setTextUniformMatrices(&text_ptr->uvars, settings_ptr->text_color, text_projection);
+    computeTextGeometry(window_width, window_height, text_projection);
+    setTextUniformMatrices(&renderer_ptr->uvars, color, text_projection);
 
-    glBindVertexArray(text_ptr->vao);
+    glBindVertexArray(renderer_ptr->vao);
 
     for (size_t i = 0; i < strlen(text); ++i) {
 
-        Character ch = text_ptr->char_array_ptr[text[i]];
+        Character ch = renderer_ptr->char_array_ptr[text[i]];
 
-        GLfloat xpos = x + ch.bearing[0] * settings_ptr->text_size;
-        GLfloat ypos = y - (ch.size[1] - ch.bearing[1]) * settings_ptr->text_size;
+        GLfloat xpos = x + ch.bearing[0] * size;
+        GLfloat ypos = y - (ch.size[1] - ch.bearing[1]) * size;
 
-        GLfloat w = ch.size[0] * settings_ptr->text_size;
-        GLfloat h = ch.size[1] * settings_ptr->text_size;
+        GLfloat w = ch.size[0] * size;
+        GLfloat h = ch.size[1] * size;
         // update VBO for each character
         GLfloat vertices[6][4] = {
             { xpos,     ypos + h,   0.0f, 0.0f },
@@ -215,17 +215,18 @@ void renderText(Text* text_ptr, Settings* settings_ptr, const char* text, float 
             glm_mat4_mulv(text_projection, v, v);
         }
         glBindTextureUnit(0, ch.texture_id);
-        glNamedBufferSubData(text_ptr->vbo, 0, sizeof(vertices), vertices);
+        glNamedBufferSubData(renderer_ptr->vbo, 0, sizeof(vertices), vertices);
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
         // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
         // bitshift by 6 to get value in pixels (2^6 = 64)
-        x += (ch.advance >> 6) * settings_ptr->text_size;
+        x += (ch.advance >> 6) * size;
     }
 }
 
 
-void renderLoop(GLFWwindow* window, Settings settings, Dice* dice_ptr, Text* text_ptr) {
+void renderLoop(GLFWwindow* window, Settings settings, SceneRenderer* scene_renderer_ptr,
+                TextRenderer* text_renderer_ptr) {
     double prev_time = glfwGetTime();
 
     bool wire_mode = false;
@@ -283,9 +284,13 @@ void renderLoop(GLFWwindow* window, Settings settings, Dice* dice_ptr, Text* tex
         glfwGetWindowSize(window, &win_width, &win_height);
         float aspect_ratio = (float)win_width / (float)win_height;
 
-        renderDice(dice_ptr, &settings, rot_quat, aspect_ratio, wire_mode);
-        renderText(text_ptr, &settings, "Press Esc to exit", 10.0f, 10.0f, win_width, win_height);
-        renderText(text_ptr, &settings, "Press Space to roll", 10.0f, 37.0f, win_width, win_height);
+        renderDice(scene_renderer_ptr, &settings, rot_quat, aspect_ratio, wire_mode);
+        renderText(text_renderer_ptr, "Press Esc to exit", settings.text_color,
+                   settings.text_size, 10.0f, 10.0f, win_width, win_height);
+        renderText(text_renderer_ptr, "Press L for wire mode", settings.text_color,
+                   settings.text_size, 10.0f, 37.0f, win_width, win_height);
+        renderText(text_renderer_ptr, "Press Space to roll", settings.text_color,
+                   settings.text_size, 10.0f, 64.0f, win_width, win_height);
 
         // Swap front buffer (display) with back buffer (where we render to)
         glfwSwapBuffers(window);
@@ -361,14 +366,14 @@ int main(void) {
             // Allocate buffers and vertex arrays (buffer layouts) to store vertex data 
             // (and not send this data on every render)
             // Vertex array and buffer for dice and text
-            Dice dice;
-            Text text;
-            if (createDice(&dice) == STATUS_OK) {
-                if (initText(&text) == STATUS_OK) {
-                    renderLoop(window, settings, &dice, &text);
-                    freeText(&text);
+            SceneRenderer scene_renderer;
+            TextRenderer text_renderer;
+            if (createDice(&scene_renderer) == STATUS_OK) {
+                if (initText(&text_renderer) == STATUS_OK) {
+                    renderLoop(window, settings, &scene_renderer, &text_renderer);
+                    freeText(&text_renderer);
                 }
-                freeDice(&dice);
+                freeDice(&scene_renderer);
             }
 
             glfwDestroyWindow(window);

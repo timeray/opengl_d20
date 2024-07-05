@@ -23,8 +23,8 @@ typedef struct {
     GLuint texture;
     ShaderProgram shader;
     SceneUniformVariables uvars;
-} Dice;
+} SceneRenderer;
 
 
-Status createDice(Dice*);
-void freeDice(Dice*);
+Status createDice(SceneRenderer*);
+void freeDice(SceneRenderer*);

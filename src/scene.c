@@ -93,7 +93,7 @@ static void initUniformVariables(GLuint program, SceneUniformVariables* uvars) {
 }
 
 
-Status createDice(Dice* dice) {
+Status createDice(SceneRenderer* dice) {
     Status status = initVertexArray(&dice->vao, &dice->vbo);
     if (status != STATUS_OK) {
         puts("Unable to initalize vertex array");
@@ -120,7 +120,7 @@ Status createDice(Dice* dice) {
 }
 
 
-void freeDice(Dice* dice) {
+void freeDice(SceneRenderer* dice) {
     freeVertexArray(&dice->vao, &dice->vbo);
     freeTextures(&dice->texture);
     freeProgram(&dice->shader);

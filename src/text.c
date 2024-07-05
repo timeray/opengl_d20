@@ -125,7 +125,7 @@ static void initUniformVariables(GLuint program, TextUniformVariables* uvars) {
 }
 
 
-Status initText(Text* text) {
+Status initText(TextRenderer* text) {
     Status status = initTextLibrary();
     if (status != STATUS_OK) {
         return status;
@@ -151,6 +151,6 @@ Status initText(Text* text) {
 }
 
 
-void freeText(Text* text) {
+void freeText(TextRenderer* text) {
     freeVertexArray(&text->vao, &text->vbo);
 }

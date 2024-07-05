@@ -27,8 +27,8 @@ typedef struct {
     ShaderProgram shader;
     TextUniformVariables uvars;
     Character* char_array_ptr;
-} Text;
+} TextRenderer;
 
 
-Status initText(Text*);
-void freeText(Text*);
+Status initText(TextRenderer*);
+void freeText(TextRenderer*);
