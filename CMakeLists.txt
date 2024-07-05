@@ -33,9 +33,8 @@ target_include_directories(d20 PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
 include(FindOpenGL)
 
-find_package(glfw3 3.3 REQUIRED)
-
 target_link_libraries(d20 PUBLIC d20_compiler_flags OpenGL::GL glfw cglm_headers glad freetype)
 add_subdirectory(external/glad EXCLUDE_FROM_ALL)
 add_subdirectory(external/cglm EXCLUDE_FROM_ALL)
 add_subdirectory(external/freetype EXCLUDE_FROM_ALL)
+add_subdirectory(external/glfw EXCLUDE_FROM_ALL)
