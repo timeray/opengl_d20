@@ -1,3 +1,8 @@
+/*
+* Simple D20 dice roller written using OpenGL.
+* 
+* Author: Artem Setov
+*/
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -9,14 +14,12 @@
 #include <GLFW/glfw3.h>
 #include <cglm/cglm.h>
 
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-#include "icosahedron.h"
+#include "status.h"
+#include "scene.h"
+#include "text.h"
+#include "animation.h"
 
 
-const char VERTEX_SHADER_PATH[] = "shaders/vertex_shader.glsl";
-const char FRAGMENT_SHADER_PATH[] = "shaders/fragment_shader.glsl";
-const char TEXTURE_PATH[] = "textures/d20_uv.png";
 const char WINDOW_NAME[] = "D20";
 
 
@@ -26,11 +29,64 @@ bool g_start_roll = false;
 bool g_is_rolling = false;
 
 
-typedef enum {
-    STATUS_OK = 1,
-    STATUS_ERR = 0
-} Status;
+typedef struct {
+    int width;
+    int height;
+    const char* name;
+} WindowSettings;
 
+
+typedef struct {
+    WindowSettings window;
+    SceneSettings scene;
+    AnimationSettings anim;
+    TextSettings text;
+} Settings;
+
+
+Settings getSettings(void) {
+    WindowSettings window_settings = {
+        .height = 600.0f,
+        .width = 600.0f,
+        .name = WINDOW_NAME
+    };
+
+    SceneSettings scene_settings = {
+        .scale = 0.7f,
+        .fov_deg = 45.0f,
+        .camera_near_z = 0.1f,
+        .camera_far_z = 100.0f,
+        .light_direction = { 1.0f, 1.0f, 2.0f },
+        .direct_brightness = 1.0f,
+        .specular_brightness = 0.5f,
+        .ambient_brightness = 0.2f,
+        .camera_position = { 0.0f, 0.0f, -5.0f },
+    };
+
+    AnimationSettings roll_anim_settings = {
+        .idle_rot_speed = 50.0f,
+
+        .n_rotations = 5,
+        .n_points = 50,
+        .max_rot_speed = 450.0f,
+        .min_rot_speed = 100.0f,
+        .deaceleration = 150.0f,
+    };
+
+    TextSettings text_settings = {
+        .text_color = { 0.5f, 0.1f, 0.8f },
+        .text_size = 0.5f,
+    };
+
+    return (Settings) {
+        .window = window_settings,
+        .scene = scene_settings,
+        .anim = roll_anim_settings,
+        .text = text_settings,
+    };
+}
+
+/* Callbacks */
 
 void errorCallback(int error, const char* descr) {
     fprintf(stderr, "Error: %s\n", descr);
@@ -53,182 +109,67 @@ static void resizeCallback(GLFWwindow* window, int width, int height) {
 }
 
 
-void initVertexArrays(GLuint* vao_ptr, GLuint* vbo_ptr) {
-    // Vertex array object (vao) and vertex buffer object (vbo)
-    // can store multiple arrays and buffers, but we will use only one for the dice
-
-    GLuint loc_attr = 0, col_attr = 1, norm_attr = 2, texture_attr = 3;
-    glCreateVertexArrays(1, vao_ptr);  // create one vertex array object    
-
-    // Enable attributes of vertex array
-    glEnableVertexArrayAttrib(*vao_ptr, loc_attr);
-    glEnableVertexArrayAttrib(*vao_ptr, col_attr);
-    glEnableVertexArrayAttrib(*vao_ptr, norm_attr);
-    glEnableVertexArrayAttrib(*vao_ptr, texture_attr);
-
-    // Bind attributes to the first (and only) vertex array
-    glVertexArrayAttribBinding(*vao_ptr, loc_attr, 0);
-    glVertexArrayAttribBinding(*vao_ptr, col_attr, 0);
-    glVertexArrayAttribBinding(*vao_ptr, norm_attr, 0);
-    glVertexArrayAttribBinding(*vao_ptr, texture_attr, 0);
-
-    // Specify layout (format) for attributes
-    const size_t attr_size = 3;
-    glVertexArrayAttribFormat(*vao_ptr, loc_attr, attr_size, GL_FLOAT, GL_FALSE, 0);
-    glVertexArrayAttribFormat(*vao_ptr, col_attr, attr_size, GL_FLOAT, GL_FALSE, attr_size * sizeof(GL_FLOAT));
-    glVertexArrayAttribFormat(*vao_ptr, norm_attr, attr_size, GL_FLOAT, GL_FALSE, 2 * attr_size * sizeof(GL_FLOAT));
-    glVertexArrayAttribFormat(*vao_ptr, texture_attr, attr_size - 1, GL_FLOAT, GL_FALSE, 3 * attr_size * sizeof(GL_FLOAT));
-
-    // Create buffer and upload values
-    glCreateBuffers(1, vbo_ptr);
-    glNamedBufferStorage(*vbo_ptr, sizeof(gIcosahedronMesh), &gIcosahedronMesh, 0);
-
-    // Bind array to the buffer
-    glVertexArrayVertexBuffer(*vao_ptr, 0, *vbo_ptr, 0, sizeof(Vertex));
+// OpenGL error callback
+void GLAPIENTRY messageCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
+                                GLsizei length, const GLchar* message, const void* userParam) {
+    fprintf(stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
+            (type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : ""),
+            type, severity, message);
 }
 
 
-void freeVertexArrays(GLuint* vao_ptr, GLuint* vbo_ptr) {
-    glDeleteBuffers(1, vbo_ptr);
-    glDeleteVertexArrays(1, vao_ptr);
+/* Setup */
+
+void setUpOpenGL(GLFWwindow* window) {
+    // Initialize glad with current context
+    gladLoadGL(glfwGetProcAddress);    
+
+    // Debug settings
+    glEnable(GL_DEBUG_OUTPUT);
+    glDebugMessageCallback(messageCallback, 0);
+
+    // Graphics settings
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 
-Status initTextures(const char* path, GLuint* texture_id) {
-    int width, height, n_channels;
-    unsigned char* data = stbi_load(path, &width, &height, &n_channels, 3);    
+Status initGLFW(const WindowSettings* settings, GLFWwindow** out_window) {
+    puts("Initialize GLFW");
     Status status = STATUS_OK;
 
-    if (data) {
-        printf("N CHAN = %d\n", n_channels);
-        glGenTextures(1, texture_id);
-        glBindTexture(GL_TEXTURE_2D, *texture_id);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
-        glGenerateMipmap(GL_TEXTURE_2D);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    } else {
-        status = STATUS_ERR;
-    }
-    stbi_image_free(data);
-    return status;
-}
-
-
-void freeTextures(GLuint* texture_id) {
-    glDeleteTextures(1, texture_id);
-}
-
-
-/*
-* Loads shader code from path to output buffer outBuf
-* Caller must free(outBuf).
-*/
-Status loadShaderText(const char* path, char** outBuf) {
-    FILE* file = fopen(path, "rb");
-    if (!file) {
-        puts("Unable to read file");
+    if (!glfwInit()) {
+        puts("Unable to initialize GLFW");
         return STATUS_ERR;
     }
 
-    fseek(file, 0, SEEK_END);
-    long length = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    char* buf = malloc(length + 1);
-    if (buf) {
-        long n_read = fread(buf, 1, length, file);
-        if (n_read != length) {
-            puts("Error during file read");
-            free(buf);
-            return STATUS_ERR;
-        }
-
-        buf[length] = '\0';
-        fclose(file);
-    } else {
-        puts("Unable to allocate buffer to read file");
+    glfwSetErrorCallback(errorCallback);
+    GLFWwindow* window = glfwCreateWindow(settings->width, settings->height,
+                                          settings->name, NULL, NULL);
+    if (!window) {
+        puts("Unable to initialize window");
+        glfwTerminate();
         return STATUS_ERR;
     }
-    *outBuf = buf;
+    glfwSetKeyCallback(window, keyCallback);
+    glfwSetFramebufferSizeCallback(window, resizeCallback);
+    glfwMakeContextCurrent(window);
+
+    *out_window = window;
+
     return STATUS_OK;
 }
 
 
-void freeShaders(GLuint, GLuint);
-
-
-Status initShaders(GLuint* vertex_shader_ptr, GLuint* fragment_shader_ptr) {    
-    GLuint vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-    GLuint fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-
-    GLuint shaders[] = { vertex_shader, fragment_shader };
-    const char* shader_paths[] = { VERTEX_SHADER_PATH, FRAGMENT_SHADER_PATH };
-    const char* shader_name[] = { "Vertex shader", "Fragment shader" };
-    bool is_shader_compiled[] = { false, false };
-
-    Status status = STATUS_OK;
-    
-    for (size_t i = 0; i < 2; ++i) {
-        GLuint shader = shaders[i];
-
-        char* shader_text = NULL;
-        if (loadShaderText(shader_paths[i], &shader_text) != STATUS_OK) {
-            printf("Unable to read %s\n", shader_name[i]);
-            status = STATUS_ERR;
-            break;
-        }
-
-#ifdef DEBUG
-        printf("%s text:\n%s\n", shader_name[i], shader_text);
-#endif
-
-        glShaderSource(shader, 1, &shader_text, NULL);
-        glCompileShader(shader);
-        free(shader_text);
-
-        // Check for compile errors
-        GLint success = 0;
-        glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-
-        if (!success) {
-            GLint max_length = 0;
-            glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &max_length);
-
-            // The max_length includes the NULL character
-            GLchar* error_log = malloc(max_length);
-            if (error_log) {
-                glGetShaderInfoLog(shader, max_length, &max_length, &error_log[0]);
-                printf("Shader compilation error:\n%s\n", error_log);
-            }
-            
-            status = STATUS_ERR;
-        } else {
-            is_shader_compiled[i] = true;
-        }
-    }
-
-    if (status == STATUS_OK) {
-        *vertex_shader_ptr = vertex_shader;
-        *fragment_shader_ptr = fragment_shader;
-    } else {
-        // Cleanup
-        for (size_t i = 0; i < 2; ++i) {
-            if (is_shader_compiled) {
-                glDeleteShader(shaders[i]);
-            }
-        }
-    }
-    
-    return status;
+void freeGLFW(GLFWwindow* window) {
+    glfwDestroyWindow(window);
+    glfwTerminate();
 }
 
 
-void freeShaders(GLuint vertex_shader, GLuint fragment_shader) {
-    glDeleteShader(vertex_shader);
-    glDeleteShader(fragment_shader);
-}
-
+/* Rendering */
 
 void showFpsInWindowTitle(GLFWwindow* window) {
     static double last_time = 0.0;
@@ -249,293 +190,12 @@ void showFpsInWindowTitle(GLFWwindow* window) {
 }
 
 
-void render(GLuint* vao_ptr, bool wireMode) {
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    size_t n = sizeof(gIcosahedronMesh) / sizeof(Vertex);
-    if (wireMode == false) {
-        for (size_t i = 0; i < 1; ++i) {
-            glBindVertexArray(*vao_ptr);
-            glDrawArrays(GL_TRIANGLES, 0, n);
-        }
-    } else {
-        for (size_t i = 0; i < n; ++i) {
-            glBindVertexArray(*vao_ptr);
-            glDrawArrays(GL_LINE_LOOP, i * 3, 3);
-        }
-    }   
-}
-
-
-typedef struct {
-    GLuint model_id;
-    GLuint normal_matrix_id;
-    GLuint view_id;
-    GLuint projection_id;
-    GLuint light_dir_id;
-    GLuint ambient_brightness_id;
-    GLuint direct_brightness_id;
-    GLuint specular_brightness_id;
-} UniformVariables;
-
-
-GLuint initUniformVariable(GLuint program, const char* name) {
-    GLuint index = glGetUniformLocation(program, name);
-    if (index == -1) {
-        printf("Unable to get uniform variable with name: %s\n", name);
-        abort();
-    }
-    return index;
-}
-
-
-UniformVariables initUniformVariables(GLuint program) {
-    return (UniformVariables) {
-        .model_id = initUniformVariable(program, "model"),
-        .normal_matrix_id = initUniformVariable(program, "normalMatrix"),
-        .view_id = initUniformVariable(program, "view"),
-        .projection_id = initUniformVariable(program, "projection"),
-        .light_dir_id = initUniformVariable(program, "lightDirection"),
-        .ambient_brightness_id = initUniformVariable(program, "ambientBrightness"),
-        .direct_brightness_id = initUniformVariable(program, "directBrightness"),
-        .specular_brightness_id = initUniformVariable(program, "specularBrightness"),
-    };
-}
-
-
-typedef struct {
-    float idle_rot_speed;  // deg/sec
-
-    // Roll animation settings
-    // Number of points should be way more than number of rotations
-    // in order to avoid phase wrapping which leads to movement in wrong direction
-    size_t n_rotations;
-    size_t n_points;
-    float max_rot_speed;  // deg/sec
-    float min_rot_speed;  // deg/sec
-    float deaceleration;  // deg/sec
-} AnimationSettings;
-
-
-typedef struct {
-    float scale;
-    float fov_deg;
-    float camera_near_z;
-    float camera_far_z;
-
-    vec3 light_direction;
-    GLfloat direct_brightness;
-    GLfloat specular_brightness;
-    GLfloat ambient_brightness;
-
-    vec3 camera_position;
-
-    AnimationSettings anim;
-} Settings;
-
-
-void setSceneUniformMatrices(Settings* settings_ptr, UniformVariables* uvars_ptr,
-                             versor rotation_quat, float aspect_ratio) {
-    // Create Model-View-Projection        
-    mat4 model;
-    glm_mat4_identity(model);
-    glm_scale(model, (vec3) { settings_ptr->scale, settings_ptr->scale, settings_ptr->scale });
-    glm_quat_rotate(model, rotation_quat, model);  // apply model rotation for current frame
-    glUniformMatrix4fv(uvars_ptr->model_id, 1, GL_FALSE, (float*)model);
-
-    mat4 view;
-    glm_mat4_identity(view);
-    glm_translate(view, settings_ptr->camera_position);
-    glUniformMatrix4fv(uvars_ptr->view_id, 1, GL_FALSE, (float*)view);
-
-    mat4 view_model;
-    glm_mat4_mul(view, model, view_model);
-
-    mat4 normal_matrix4;
-    glm_mat4_inv(view_model, normal_matrix4);
-    glm_mat4_transpose(normal_matrix4);
-    mat3 normal_matrix;
-    glm_mat4_pick3(normal_matrix4, normal_matrix);
-    glUniformMatrix3fv(uvars_ptr->normal_matrix_id, 1, GL_FALSE, (float*)normal_matrix);
-
-    mat4 projection;    
-    //glm_ortho_default(aspect_ratio, projection);
-    glm_perspective(glm_rad(settings_ptr->fov_deg), aspect_ratio, settings_ptr->camera_near_z,
-                    settings_ptr->camera_far_z, projection);
-    glUniformMatrix4fv(uvars_ptr->projection_id, 1, GL_FALSE, (float*)projection);
-
-    // Lighting
-    mat3 view_matrix3;
-    glm_mat4_pick3(view, view_matrix3);
-    vec4 view_light_direction = { 0.0f };
-    vec3 norm_light_direction;
-    glm_vec3_copy(settings_ptr->light_direction, norm_light_direction);;
-    glm_normalize(norm_light_direction);
-    glm_mat3_mulv(view_matrix3, norm_light_direction, view_light_direction);
-    glUniform3fv(uvars_ptr->light_dir_id, 1, (float*)view_light_direction);
-    glUniform1f(uvars_ptr->ambient_brightness_id, settings_ptr->ambient_brightness);
-    glUniform1f(uvars_ptr->direct_brightness_id, settings_ptr->direct_brightness);
-    glUniform1f(uvars_ptr->specular_brightness_id, settings_ptr->specular_brightness);
-}
-
-
-void getDiceRollQuaternion(int dice_value, versor q_out) {
-    int face_idx = getIcosahedronFaceIndex(dice_value);
-
-    size_t face_vertex_idx = face_idx * 3;
-
-    // Rotate face to positive Z direction
-    vec3 positive_z_vec = { 0.0f, 0.0f, 1.0f };
-    Vertex first_vertex = gIcosahedronMesh[face_vertex_idx];
-    vec3 face_normal = { first_vertex.n[0], first_vertex.n[1], first_vertex.n[2] };
-
-    versor q_rot;
-    glm_quat_from_vecs(face_normal, positive_z_vec, q_rot);
-
-    // Correct orientation
-    vec3 positive_y_vec = { 0.0f, 1.0f, 0.0f };
-    Vertex orientation_vertex = gIcosahedronMesh[face_vertex_idx + getOrientationVertexIndex(face_idx)];
-    vec3 orient_vec = { orientation_vertex.x, orientation_vertex.y, orientation_vertex.z };
-    glm_quat_rotatev(q_rot, orient_vec, orient_vec);
-    orient_vec[2] = 0.0f;
-    GLfloat orientation_angle = glm_vec3_angle(orient_vec, positive_y_vec);
-    if (orient_vec[0] < 0.0f) {
-        orientation_angle *= -1;
-    }
-
-    // We manually find and specify axis-angle to handle case when orient_vec = -positive_y_vec
-    versor q_orient;
-    glm_quatv(q_orient, orientation_angle, positive_z_vec);
-
-    // Perform transformations in reverse order
-    glm_quat_mul(q_orient, q_rot, q_out);
-}
-
-
-void getRandomRollQuaternion(versor q_out) {
-    q_out[0] = (float)rand() / (float)rand();
-    q_out[1] = (float)rand() / (float)rand();
-    q_out[2] = (float)rand() / (float)rand();
-    q_out[3] = 0.0f;
-    glm_quat_normalize(q_out);
-}
-
-
-void getIdleAnimationQuaternion(float time_delta, float rot_speed_deg, versor q_out) {
-    static float rot_angle_deg = 0.0f;
-    rot_angle_deg += rot_speed_deg * time_delta;
-
-    versor q1, q2, q3;
-    glm_quatv(q1, glm_rad(rot_angle_deg), (vec3) { 0.0f, 1.0f, 0.0f });
-    glm_quatv(q2, glm_rad(rot_angle_deg * 1.5), (vec3) { 0.0f, 0.0f, 1.0f });
-    glm_quatv(q3, glm_rad(rot_angle_deg * 1.75), (vec3) { 1.0f, 0.0f, 0.0f });
-
-    glm_quat_mul(q2, q3, q2);
-    glm_quat_mul(q1, q2, q_out);
-}
-
-
-float getRollAngleDeltaRad(AnimationSettings* settings_ptr) {
-    return settings_ptr->n_rotations * 2 * M_PI / settings_ptr->n_points;
-}
-
-
-typedef struct {
-    size_t cur_n;
-    versor* q_arr;
-    double t;
-    versor q_prev;
-    float cur_speed_rad_per_sec;
-    bool hasFinished;
-} RollAnimationState;
-
-
-RollAnimationState initRollAnimationState(size_t roll_points_num) {
-    RollAnimationState state;
-    state.q_arr = malloc(sizeof(versor) * roll_points_num);
-    return state;
-}
-
-
-void deleteRollAnimationState(RollAnimationState* state_ptr) {
-    free(state_ptr->q_arr);
-}
-
-
-
-void resetRollAnimationState(RollAnimationState* state_ptr) {
-    state_ptr->cur_n = 0;
-    state_ptr->t = 0.0;
-    glm_quatv(state_ptr->q_prev, 0.0f, (vec3) { 0.0f, 1.0f, 0.0f });
-    state_ptr->hasFinished = false;
-}
-
-
-void fillRollAnimationQueue(RollAnimationState* state_ptr, AnimationSettings* anim_settings_ptr, size_t dice_value) {
-    const size_t n_rotations = anim_settings_ptr->n_rotations;
-    const size_t n_points = anim_settings_ptr->n_points;
-    const float roll_angle_delta_rad = getRollAngleDeltaRad(anim_settings_ptr);
-
-    getDiceRollQuaternion(dice_value, state_ptr->q_arr[n_points - 1]);
-
-    versor q;
-    vec3 axis;
-    float angle, added_angle = 0.0f;
-
-    for (size_t n = 0; n < n_points - 1; ++n) {
-        float t = (float)n / (n_points - 1);
-        glm_quat_slerp(state_ptr->q_prev, state_ptr->q_arr[n_points - 1], t, q);
-
-        added_angle += roll_angle_delta_rad;
-
-        angle = glm_quat_angle(q) + added_angle;
-        glm_quat_axis(q, axis);
-
-        glm_quatv(state_ptr->q_arr[n], angle, axis);
-    }    
-}
-
-
-void getRollAnimationQuaternion(float time_delta, AnimationSettings* settings_ptr,
-                                RollAnimationState* state_ptr, versor q_out) {
-    const size_t n_points = settings_ptr->n_points;
-    const float roll_angle_delta_rad = getRollAngleDeltaRad(settings_ptr);
-
-    // Determine speed
-    if (state_ptr->cur_n <= n_points / 2) {
-        state_ptr->cur_speed_rad_per_sec = glm_rad(settings_ptr->max_rot_speed);
-    } else {
-        state_ptr->cur_speed_rad_per_sec = glm_max(
-            glm_rad(settings_ptr->min_rot_speed),
-            state_ptr->cur_speed_rad_per_sec - glm_rad(settings_ptr->deaceleration) * time_delta
-        );
-    }
-
-    // Perform n rotations before moving to final position
-    if (state_ptr->cur_n < n_points) {
-        // ROLL_ANGLE_DELTA_RAD - rotaion angle per one position
-        state_ptr->t += time_delta * state_ptr->cur_speed_rad_per_sec / roll_angle_delta_rad;
-
-        // Interpolate frame rotation from previous position to desired position
-        glm_quat_slerp(state_ptr->q_prev, state_ptr->q_arr[state_ptr->cur_n], glm_min(state_ptr->t, 1.0), q_out);
-
-        if (state_ptr->t >= 1.0) {
-            state_ptr->cur_n += 1;
-            state_ptr->t = 0.0f;
-            glm_quat_copy(q_out, state_ptr->q_prev);
-        }
-        state_ptr->hasFinished = false;
-    } else {
-        glm_quat_copy(state_ptr->q_arr[state_ptr->cur_n - 1], q_out);
-        state_ptr->hasFinished = true;
-    }
-}
-
-
-void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint program,
-                Settings settings, UniformVariables uvars) {
+// Main render loop
+void renderLoop(GLFWwindow* window, Settings settings, SceneRenderer* scene_renderer_ptr,
+                TextRenderer* text_renderer_ptr) {
     double prev_time = glfwGetTime();
 
-    bool wire_mode = false;
+    bool is_in_wire_mode = false;
     bool is_in_idle_animation = true;
 
     versor rot_quat;
@@ -543,13 +203,14 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint pro
     resetRollAnimationState(&roll_anim_state);
 
     while (!glfwWindowShouldClose(window)) {
-        // Process flags for the iteration
+        // Clear buffers
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
         if (g_switch_wire_mode) {
             g_switch_wire_mode = false;
-            wire_mode = !wire_mode;
+            is_in_wire_mode = !is_in_wire_mode;
         }
 
-        // Logging
         showFpsInWindowTitle(window);
 
         // Advance time
@@ -583,17 +244,18 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint pro
             }
         }
 
-        // Fill uniform matrices for shaders
+        // Rendering
         int win_width, win_height;
         glfwGetWindowSize(window, &win_width, &win_height);
         float aspect_ratio = (float)win_width / (float)win_height;
-        setSceneUniformMatrices(&settings, &uvars, rot_quat, aspect_ratio);
 
-        // Texture
-        glBindTexture(GL_TEXTURE_2D, *tex_ptr);
-
-        // Keep running until close button or Alt+F4        
-        render(vao_ptr, wire_mode);
+        renderScene(scene_renderer_ptr, &settings.scene, rot_quat, aspect_ratio, is_in_wire_mode);
+        renderText(text_renderer_ptr, "Press Esc to exit", &settings.text,
+                   10.0f, 10.0f, win_width, win_height);
+        renderText(text_renderer_ptr, "Press L for wire mode", &settings.text, 
+                   10.0f, 37.0f, win_width, win_height);
+        renderText(text_renderer_ptr, "Press Space to roll", &settings.text, 
+                   10.0f, 64.0f, win_width, win_height);
 
         // Swap front buffer (display) with back buffer (where we render to)
         glfwSwapBuffers(window);
@@ -606,104 +268,29 @@ void renderLoop(GLFWwindow* window, GLuint* vao_ptr, GLuint* tex_ptr, GLuint pro
         glfwPollEvents();
     }
 
+    // Cleanup
     deleteRollAnimationState(&roll_anim_state);
 }
 
 
 int main(void) {
-    AnimationSettings roll_anim_settings = {
-        .idle_rot_speed = 50.0f,
+    Settings settings = getSettings();
+    
+    srand(time(NULL));  // for dice rolls
 
-        .n_rotations = 5,
-        .n_points = 50,
-        .max_rot_speed = 450.0f,
-        .min_rot_speed = 100.0f,
-        .deaceleration = 150.0f,
-    };
+    GLFWwindow* window;
+    if (initGLFW(&settings.window, &window) == STATUS_OK) {
+        setUpOpenGL(window);
 
-    Settings settings = {
-        .scale = 0.7f,
-        .fov_deg = 45.0f,
-        .camera_near_z = 0.1f,
-        .camera_far_z = 100.0f,
-        .light_direction = { 1.0f, 1.0f, 2.0f },
-        .direct_brightness = 1.0f,
-        .specular_brightness = 0.5f,
-        .ambient_brightness = 0.2f,
-        .camera_position = { 0.0f, 0.0f, -5.0f },
-        .anim = roll_anim_settings
-    };
-
-    initIcosahedronMeshFromVertices();
-
-    srand(time(NULL));
-
-    puts("Initialize GLFW");
-
-    if (glfwInit()) {
-        glfwSetErrorCallback(errorCallback);
-        GLFWwindow* window = glfwCreateWindow(600, 600, WINDOW_NAME, NULL, NULL);
-        if (window) {
-            glfwSetKeyCallback(window, keyCallback);
-
-            glfwMakeContextCurrent(window);
-
-            // Initialize glad with current context
-            gladLoadGL(glfwGetProcAddress);
-
-            glfwSetFramebufferSizeCallback(window, resizeCallback);
-
-            // Graphics settings
-            glEnable(GL_DEPTH_TEST);
-            glEnable(GL_CULL_FACE);
-
-            // Allocate buffers and vertex arrays (buffer layouts) to store vertex data 
-            // (and not send this data on every render)
-            GLuint vao = 0, vbo = 0;
-            initVertexArrays(&vao, &vbo);
-
-            GLuint texture_id = 0;
-            if (initTextures(TEXTURE_PATH, &texture_id) == STATUS_OK) {
-                GLuint vertex_shader, fragment_shader;
-                if (initShaders(&vertex_shader, &fragment_shader)) {
-                    GLuint program = glCreateProgram();
-                    glAttachShader(program, vertex_shader);
-                    glAttachShader(program, fragment_shader);
-                    glLinkProgram(program);
-                    GLint link_success;
-                    glGetProgramiv(program, GL_LINK_STATUS, &link_success);
-                    if (link_success) {
-                        // We use only one set of shaders, so we can call glUseProgram only once
-                        glUseProgram(program);
-
-                        UniformVariables uvars = initUniformVariables(program);
-
-                        renderLoop(window, &vao, &texture_id, program, settings, uvars);
-                    } else {
-                        puts("Shader program linking error");
-                    }
-
-                    // Free stuff
-                    glDeleteProgram(program);
-                    freeShaders(vertex_shader, fragment_shader);
-                } else {
-                    puts("Unable to initialize shaders");
-                }
-            } else {
-                puts("Unale to initalize textures");
+        SceneRenderer scene_renderer;
+        TextRenderer text_renderer;
+        if (initSceneRenderer(&scene_renderer) == STATUS_OK) {
+            if (initTextRenderer(&text_renderer) == STATUS_OK) {
+                renderLoop(window, settings, &scene_renderer, &text_renderer);
+                freeTextRenderer(&text_renderer);
             }
-            freeTextures(&texture_id);
-
-            freeVertexArrays(&vao, &vbo);
-            glfwDestroyWindow(window);
-        } else {
-            puts("Unable to initialize window");
+            freeSceneRenderer(&scene_renderer);
         }
-
-        puts("Terminate GLFW");
-        glfwTerminate();
-
-    } else {
-        puts("Unable to initialize GLFW");
+        freeGLFW(window);
     }
 }

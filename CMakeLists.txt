@@ -3,30 +3,38 @@ cmake_minimum_required(VERSION 3.15)
 # Set project name
 project(OpenGL_D20 VERSION 1.0)
 
-add_executable(d20 d20.c icosahedron.c)
+add_executable(d20 d20.c "src/icosahedron.c" "src/animation.c" "src/scene.c" "src/text.c" "src/shader.c")
+
+# Copying required data
 add_custom_command(
 	TARGET d20 POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_directory
-	${CMAKE_SOURCE_DIR}/shaders $<TARGET_FILE_DIR:d20>/shaders
+	${CMAKE_SOURCE_DIR}/resources/shaders ${CMAKE_CURRENT_BINARY_DIR}/resources/shaders
 	COMMENT "Copying shader files" VERBATIM
 )
 add_custom_command(
 	TARGET d20 POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_directory
-	${CMAKE_SOURCE_DIR}/textures $<TARGET_FILE_DIR:d20>/textures
+	${CMAKE_SOURCE_DIR}/resources/textures ${CMAKE_CURRENT_BINARY_DIR}/resources/textures
 	COMMENT "Copying texture files" VERBATIM
+)
+add_custom_command(
+	TARGET d20 POST_BUILD
+	COMMAND ${CMAKE_COMMAND} -E copy_directory
+	${CMAKE_SOURCE_DIR}/resources/fonts ${CMAKE_CURRENT_BINARY_DIR}/resources/fonts
+	COMMENT "Copying fonts files" VERBATIM
 )
 
 
 add_library(d20_compiler_flags INTERFACE)
 target_compile_features(d20_compiler_flags INTERFACE c_std_11)
 
-target_include_directories(d20 PRIVATE ${CMAKE_SOURCE_DIR})
+target_include_directories(d20 PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
 include(FindOpenGL)
 
-find_package(glfw3 3.3 REQUIRED)
-
-target_link_libraries(d20 PUBLIC d20_compiler_flags OpenGL::GL glfw cglm_headers glad)
-add_subdirectory(glad EXCLUDE_FROM_ALL)
-add_subdirectory(cglm EXCLUDE_FROM_ALL)
+target_link_libraries(d20 PUBLIC d20_compiler_flags OpenGL::GL glfw cglm_headers glad freetype)
+add_subdirectory(external/glad EXCLUDE_FROM_ALL)
+add_subdirectory(external/cglm EXCLUDE_FROM_ALL)
+add_subdirectory(external/freetype EXCLUDE_FROM_ALL)
+add_subdirectory(external/glfw EXCLUDE_FROM_ALL)
