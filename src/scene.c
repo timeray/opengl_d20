@@ -93,7 +93,9 @@ static void initUniformVariables(GLuint program, SceneUniformVariables* uvars) {
 }
 
 
-Status createDice(SceneRenderer* dice) {
+Status initSceneRenderer(SceneRenderer* dice) {
+    initIcosahedronMeshFromVertices();
+
     Status status = initVertexArray(&dice->vao, &dice->vbo);
     if (status != STATUS_OK) {
         puts("Unable to initalize vertex array");
@@ -120,8 +122,85 @@ Status createDice(SceneRenderer* dice) {
 }
 
 
-void freeDice(SceneRenderer* dice) {
+void freeSceneRenderer(SceneRenderer* dice) {
     freeVertexArray(&dice->vao, &dice->vbo);
     freeTextures(&dice->texture);
     freeProgram(&dice->shader);
+}
+
+
+/* Rendering */
+static void setDiceUniformMatrices(SceneUniformVariables* uvars_ptr,
+    mat4 model, mat4 view, mat3 normal_matrix, mat4 projection) {
+    glUniformMatrix4fv(uvars_ptr->model_id, 1, GL_FALSE, (float*)model);
+    glUniformMatrix4fv(uvars_ptr->view_id, 1, GL_FALSE, (float*)view);
+    glUniformMatrix3fv(uvars_ptr->normal_matrix_id, 1, GL_FALSE, (float*)normal_matrix);
+    glUniformMatrix4fv(uvars_ptr->projection_id, 1, GL_FALSE, (float*)projection);
+}
+
+
+static void setLightingUniformMatrices(
+    SceneSettings* settings_ptr, SceneUniformVariables* uvars_ptr, vec3 view_direction
+) {
+    glUniform3fv(uvars_ptr->light_dir_id, 1, (float*)view_direction);
+    glUniform1f(uvars_ptr->ambient_brightness_id, settings_ptr->ambient_brightness);
+    glUniform1f(uvars_ptr->direct_brightness_id, settings_ptr->direct_brightness);
+    glUniform1f(uvars_ptr->specular_brightness_id, settings_ptr->specular_brightness);
+}
+
+
+static void computeDiceGeometry(SceneSettings* settings_ptr, versor rotation_quat, float aspect_ratio,
+                                mat4 model, mat4 view, mat3 normal_matrix, mat4 projection) {
+    glm_mat4_identity(model);
+    glm_scale(model, (vec3) { settings_ptr->scale, settings_ptr->scale, settings_ptr->scale });
+    glm_quat_rotate(model, rotation_quat, model);  // apply model rotation for current frame
+
+    glm_mat4_identity(view);
+    glm_translate(view, settings_ptr->camera_position);
+
+    mat4 view_model;
+    glm_mat4_mul(view, model, view_model);
+
+    mat4 normal_matrix4;
+    glm_mat4_inv(view_model, normal_matrix4);
+    glm_mat4_transpose(normal_matrix4);
+    glm_mat4_pick3(normal_matrix4, normal_matrix);
+
+    glm_perspective(glm_rad(settings_ptr->fov_deg), aspect_ratio, settings_ptr->camera_near_z,
+        settings_ptr->camera_far_z, projection);
+}
+
+
+static void computeLightingGeometry(mat4 scene_view, vec3 scene_direction, vec3 out_direction) {
+    mat3 view_matrix3;
+    glm_mat4_pick3(scene_view, view_matrix3);
+    vec3 norm_light_direction;
+    glm_vec3_copy(scene_direction, norm_light_direction);
+    glm_normalize(norm_light_direction);
+    glm_mat3_mulv(view_matrix3, norm_light_direction, out_direction);
+}
+
+
+void renderScene(SceneRenderer* dice_ptr, SceneSettings* settings_ptr, versor rot_quat,
+                float aspect_ratio, bool wireMode) {
+    glUseProgram(dice_ptr->shader.id);
+    mat4 model, view, projection;
+    mat3 normal_matrix;
+    computeDiceGeometry(settings_ptr, rot_quat, aspect_ratio, model, view, normal_matrix, projection);
+    setDiceUniformMatrices(&dice_ptr->uvars, model, view, normal_matrix, projection);
+    vec3 view_light_direction;
+    computeLightingGeometry(view, settings_ptr->light_direction, view_light_direction);
+    setLightingUniformMatrices(settings_ptr, &dice_ptr->uvars, view_light_direction);
+
+    glBindVertexArray(dice_ptr->vao);
+    glBindTextureUnit(0, dice_ptr->texture);
+    size_t n = sizeof(gIcosahedronMesh) / sizeof(Vertex);
+    if (wireMode == false) {
+        glDrawArrays(GL_TRIANGLES, 0, n);
+    }
+    else {
+        for (size_t i = 0; i < n / 3; ++i) {
+            glDrawArrays(GL_LINE_LOOP, i * 3, 3);
+        }
+    }
 }

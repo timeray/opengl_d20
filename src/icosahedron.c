@@ -9,7 +9,7 @@
 
 const GLfloat DEFAULT_VERTEX_COLOR[] = {0.8f, 0.8f, 0.8f};
 
-
+static bool g_is_initialized = false;
 Vertex gIcosahedronMesh[20 * 3];
 
 // Face index to dice value
@@ -110,6 +110,10 @@ static bool almostEqual(GLfloat v1, GLfloat v2) {
 
 
 void initIcosahedronMeshFromVertices(void) {
+    if (g_is_initialized) {
+        return;
+    }
+
     const size_t n_vertices = sizeof(gVertices) / sizeof(Vertex);
     const size_t n_triangles = sizeof(gIcosahedronMesh) / sizeof(Vertex);
 
@@ -226,4 +230,6 @@ void initIcosahedronMeshFromVertices(void) {
             gIcosahedronMesh[v].n[0], gIcosahedronMesh[v].n[1], gIcosahedronMesh[v].n[2],
             gIcosahedronMesh[v].t_x, gIcosahedronMesh[v].t_y);
     }
+
+    g_is_initialized = true;
 }

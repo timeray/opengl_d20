@@ -125,7 +125,7 @@ static void initUniformVariables(GLuint program, TextUniformVariables* uvars) {
 }
 
 
-Status initText(TextRenderer* text) {
+Status initTextRenderer(TextRenderer* text) {
     Status status = initTextLibrary();
     if (status != STATUS_OK) {
         return status;
@@ -151,6 +151,66 @@ Status initText(TextRenderer* text) {
 }
 
 
-void freeText(TextRenderer* text) {
+void freeTextRenderer(TextRenderer* text) {
     freeVertexArray(&text->vao, &text->vbo);
+}
+
+
+/* Rendering */
+static void setTextUniformMatrices(TextUniformVariables* uvars_ptr, vec3 color, mat4 projection) {
+    glUniform3f(uvars_ptr->color_id, color[0], color[1], color[2]);
+    glUniformMatrix4fv(uvars_ptr->projection_id, 1, GL_FALSE, (float*)projection);
+}
+
+
+static void computeTextGeometry(float width, float height, mat4 projection) {
+    glm_ortho(0.0f, width, 0.0f, height, 0.0f, 1.0f, projection);
+}
+
+
+void renderText(TextRenderer* renderer_ptr, const char* text, TextSettings* settings_ptr,
+                float x, float y, float window_width, float window_height) {
+    glUseProgram(renderer_ptr->shader.id);
+    mat4 text_projection;
+    computeTextGeometry(window_width, window_height, text_projection);
+    setTextUniformMatrices(&renderer_ptr->uvars, settings_ptr->text_color, text_projection);
+
+    glBindVertexArray(renderer_ptr->vao);
+
+    float size = settings_ptr->text_size;
+    for (size_t i = 0; i < strlen(text); ++i) {
+
+        Character ch = renderer_ptr->char_array_ptr[text[i]];
+
+        GLfloat xpos = x + ch.bearing[0] * size;
+        GLfloat ypos = y - (ch.size[1] - ch.bearing[1]) * size;
+
+        GLfloat w = ch.size[0] * size;
+        GLfloat h = ch.size[1] * size;
+        // update VBO for each character
+        GLfloat vertices[6][4] = {
+            { xpos,     ypos + h,   0.0f, 0.0f },
+            { xpos,     ypos,       0.0f, 1.0f },
+            { xpos + w, ypos,       1.0f, 1.0f },
+
+            { xpos,     ypos + h,   0.0f, 0.0f },
+            { xpos + w, ypos,       1.0f, 1.0f },
+            { xpos + w, ypos + h,   1.0f, 0.0f }
+        };
+        for (size_t i = 0; i < 6; ++i) {
+            vec4 v;
+            v[0] = vertices[i][0];
+            v[1] = vertices[i][1];
+            v[2] = 0.0f;
+            v[3] = 1.0f;
+            glm_mat4_mulv(text_projection, v, v);
+        }
+        glBindTextureUnit(0, ch.texture_id);
+        glNamedBufferSubData(renderer_ptr->vbo, 0, sizeof(vertices), vertices);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
+        // bitshift by 6 to get value in pixels (2^6 = 64)
+        x += (ch.advance >> 6) * size;
+    }
 }

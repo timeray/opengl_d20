@@ -30,5 +30,13 @@ typedef struct {
 } TextRenderer;
 
 
-Status initText(TextRenderer*);
-void freeText(TextRenderer*);
+typedef struct {
+    vec3 text_color;
+    float text_size;
+} TextSettings;
+
+
+Status initTextRenderer(TextRenderer*);
+void freeTextRenderer(TextRenderer*);
+
+void renderText(TextRenderer*, const char*, TextSettings*, float, float, float, float);

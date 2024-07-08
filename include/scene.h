@@ -1,6 +1,8 @@
 #pragma once
 
 #include <glad/gl.h>
+#include <cglm/cglm.h>
+
 #include "status.h"
 #include "shader.h"
 
@@ -26,5 +28,22 @@ typedef struct {
 } SceneRenderer;
 
 
-Status createDice(SceneRenderer*);
-void freeDice(SceneRenderer*);
+typedef struct {
+    float scale;
+    float fov_deg;
+    float camera_near_z;
+    float camera_far_z;
+
+    vec3 light_direction;
+    GLfloat direct_brightness;
+    GLfloat specular_brightness;
+    GLfloat ambient_brightness;
+
+    vec3 camera_position;
+} SceneSettings;
+
+
+Status initSceneRenderer(SceneRenderer*);
+void freeSceneRenderer(SceneRenderer*);
+
+void renderScene(SceneRenderer*, SceneSettings*, versor, float, bool);
