@@ -275,22 +275,34 @@ void renderLoop(GLFWwindow* window, Settings settings, SceneRenderer* scene_rend
 
 int main(void) {
     Settings settings = getSettings();
-    
+
     srand(time(NULL));  // for dice rolls
 
     GLFWwindow* window;
-    if (initGLFW(&settings.window, &window) == STATUS_OK) {
-        setUpOpenGL(window);
-
-        SceneRenderer scene_renderer;
-        TextRenderer text_renderer;
-        if (initSceneRenderer(&scene_renderer) == STATUS_OK) {
-            if (initTextRenderer(&text_renderer) == STATUS_OK) {
-                renderLoop(window, settings, &scene_renderer, &text_renderer);
-                freeTextRenderer(&text_renderer);
-            }
-            freeSceneRenderer(&scene_renderer);
-        }
-        freeGLFW(window);
+    if (initGLFW(&settings.window, &window) != STATUS_OK) {
+        return 1;
     }
+
+    setUpOpenGL(window);
+
+    SceneRenderer scene_renderer;
+    if (initSceneRenderer(&scene_renderer) != STATUS_OK) {
+        freeGLFW(window);
+        return 1;
+    }
+
+    TextRenderer text_renderer;
+    if (initTextRenderer(&text_renderer) != STATUS_OK) {
+        freeSceneRenderer(&scene_renderer);
+        freeGLFW(window);
+        return 1;
+    }
+
+    renderLoop(window, settings, &scene_renderer, &text_renderer);
+
+    freeTextRenderer(&text_renderer);
+    freeSceneRenderer(&scene_renderer);
+    freeGLFW(window);
+
+    return 0;
 }
