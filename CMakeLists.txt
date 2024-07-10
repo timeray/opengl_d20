@@ -12,7 +12,7 @@ ENDIF()
 
 add_library(d20_compiler_flags INTERFACE)
 target_compile_features(d20_compiler_flags INTERFACE c_std_11)
-if (WIN32)
+if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 	set(CMAKE_C_FLAGS_RELEASE "/O2")
 else()
 	set(CMAKE_C_FLAGS_RELEASE "-O2")
