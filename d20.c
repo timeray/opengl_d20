@@ -227,7 +227,7 @@ void renderLoop(GLFWwindow* window, Settings settings, SceneRenderer* scene_rend
             glm_quat_copy(rot_quat, roll_anim_state.q_prev);
 
             size_t dice_value = (size_t)(rand() % 20 + 1);
-            printf("Rolled number: %zu\n", dice_value);
+            // printf("Rolled number: %zu\n", dice_value);
             fillRollAnimationQueue(&roll_anim_state, &settings.anim, dice_value);
         }
 
