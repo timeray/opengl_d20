@@ -5,13 +5,16 @@
 
 
 typedef struct {
-    GLuint id;
+    GLuint id;  // OpenGL program id
     GLuint vertex_shader;
     GLuint fragment_shader;
 } ShaderProgram;
 
 
-Status initProgram(const char*, const char*, ShaderProgram*);
-void freeProgram(ShaderProgram*);
+// Initialize shader program
+Status initProgram(const char* vertex_shader_path, const char* fragment_shader_path,
+                   ShaderProgram* shader_program);
+void freeProgram(ShaderProgram* shader_program);
 
-GLuint initUniformVariable(GLuint, const char*);
+// Initialize uniform variable for OpenGL program
+GLuint initUniformVariable(GLuint program, const char* name);

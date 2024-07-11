@@ -36,7 +36,8 @@ typedef struct {
 } TextSettings;
 
 
-Status initTextRenderer(TextRenderer*);
-void freeTextRenderer(TextRenderer*);
+Status initTextRenderer(TextRenderer* renderer);
+void freeTextRenderer(TextRenderer* renderer);
 
-void renderText(TextRenderer*, const char*, TextSettings*, float, float, float, float);
+void renderText(TextRenderer* renderer, const char* text, TextSettings* settings,
+                float pos_x, float pos_y, float window_width, float window_height);

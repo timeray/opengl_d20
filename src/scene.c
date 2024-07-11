@@ -181,7 +181,7 @@ static void computeLightingGeometry(mat4 scene_view, vec3 scene_direction, vec3 
 }
 
 
-void renderScene(SceneRenderer* dice_ptr, SceneSettings* settings_ptr, versor rot_quat,
+void renderScene(SceneRenderer* dice_ptr, const SceneSettings* settings_ptr, versor rot_quat,
                 float aspect_ratio, bool wireMode) {
     glUseProgram(dice_ptr->shader.id);
     mat4 model, view, projection;

@@ -26,8 +26,8 @@ typedef struct {
 // Calculated during runtime using initIcosahedronMeshFromVertices()
 extern Vertex gIcosahedronMesh[20 * 3];
 
-// Initialize icosahedron mesh
+// Initialize icosahedron mesh. Should be run once
 void initIcosahedronMeshFromVertices(void);
 
-size_t getIcosahedronFaceIndex(size_t);
-size_t getOrientationVertexIndex(size_t);
+size_t getIcosahedronFaceIndex(size_t dice_value);
+size_t getOrientationVertexIndex(size_t face_index);

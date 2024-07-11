@@ -25,15 +25,18 @@ typedef struct {
     bool hasFinished;
 } RollAnimationState;
 
+// Initialize animation state.
+//     roll_points_num - number of steps approximating animation
+RollAnimationState initRollAnimationState(size_t roll_points_num);
+void deleteRollAnimationState(RollAnimationState* state);
 
-void getDiceRollQuaternion(int, versor);
-void getRandomRollQuaternion(versor);
-void getIdleAnimationQuaternion(float, float, versor);
-float getRollAngleDeltaRad(AnimationSettings*);
+// Get current rotation quaternion for idle animation
+void getIdleAnimationQuaternion(float time_delta, float rot_speed_deg, versor q_out);
 
+// Fill roll animation queue in current animation state using target dice value
+void fillRollAnimationQueue(RollAnimationState* state, versor initial_rot_quat,
+                            const AnimationSettings* settings, size_t dice_value);
 
-RollAnimationState initRollAnimationState(size_t);
-void deleteRollAnimationState(RollAnimationState*);
-void resetRollAnimationState(RollAnimationState*);
-void fillRollAnimationQueue(RollAnimationState*, AnimationSettings*, size_t);
-void getRollAnimationQuaternion(float, AnimationSettings*, RollAnimationState*, versor);
+// Get current rotation quaternion for idle animation
+void getRollAnimationQuaternion(float time_delta, const AnimationSettings* settings,
+                                RollAnimationState* state, versor q_out);

@@ -8,6 +8,7 @@ void getDiceRollQuaternion(int dice_value, versor q_out) {
     int face_idx = getIcosahedronFaceIndex(dice_value);
 
     size_t face_vertex_idx = face_idx * 3;
+    size_t orientation_vertex_idx = face_vertex_idx + getOrientationVertexIndex(face_idx);
 
     // Rotate face to positive Z direction
     vec3 positive_z_vec = { 0.0f, 0.0f, 1.0f };
@@ -19,7 +20,7 @@ void getDiceRollQuaternion(int dice_value, versor q_out) {
 
     // Correct orientation
     vec3 positive_y_vec = { 0.0f, 1.0f, 0.0f };
-    Vertex orientation_vertex = gIcosahedronMesh[face_vertex_idx + getOrientationVertexIndex(face_idx)];
+    Vertex orientation_vertex = gIcosahedronMesh[orientation_vertex_idx];
     vec3 orient_vec = { orientation_vertex.x, orientation_vertex.y, orientation_vertex.z };
     glm_quat_rotatev(q_rot, orient_vec, orient_vec);
     orient_vec[2] = 0.0f;
@@ -60,22 +61,9 @@ void getIdleAnimationQuaternion(float time_delta, float rot_speed_deg, versor q_
 }
 
 
-float getRollAngleDeltaRad(AnimationSettings* settings_ptr) {
+float getRollAngleDeltaRad(const AnimationSettings* settings_ptr) {
     return settings_ptr->n_rotations * 2 * M_PI / settings_ptr->n_points;
 }
-
-
-RollAnimationState initRollAnimationState(size_t roll_points_num) {
-    RollAnimationState state;
-    state.q_arr = malloc(sizeof(versor) * roll_points_num);
-    return state;
-}
-
-
-void deleteRollAnimationState(RollAnimationState* state_ptr) {
-    free(state_ptr->q_arr);
-}
-
 
 
 void resetRollAnimationState(RollAnimationState* state_ptr) {
@@ -86,7 +74,24 @@ void resetRollAnimationState(RollAnimationState* state_ptr) {
 }
 
 
-void fillRollAnimationQueue(RollAnimationState* state_ptr, AnimationSettings* anim_settings_ptr, size_t dice_value) {
+RollAnimationState initRollAnimationState(size_t roll_points_num) {
+    RollAnimationState state;    
+    state.q_arr = malloc(sizeof(versor) * roll_points_num);
+    resetRollAnimationState(&state);
+    return state;
+}
+
+
+void deleteRollAnimationState(RollAnimationState* state_ptr) {
+    free(state_ptr->q_arr);
+}
+
+
+void fillRollAnimationQueue(RollAnimationState* state_ptr, versor initial_rot_quat,
+                            const AnimationSettings* anim_settings_ptr, size_t dice_value) {
+    resetRollAnimationState(state_ptr);
+    glm_quat_copy(initial_rot_quat, state_ptr->q_prev);
+
     const size_t n_rotations = anim_settings_ptr->n_rotations;
     const size_t n_points = anim_settings_ptr->n_points;
     const float roll_angle_delta_rad = getRollAngleDeltaRad(anim_settings_ptr);
@@ -111,7 +116,7 @@ void fillRollAnimationQueue(RollAnimationState* state_ptr, AnimationSettings* an
 }
 
 
-void getRollAnimationQuaternion(float time_delta, AnimationSettings* settings_ptr,
+void getRollAnimationQuaternion(float time_delta, const AnimationSettings* settings_ptr,
     RollAnimationState* state_ptr, versor q_out) {
     const size_t n_points = settings_ptr->n_points;
     const float roll_angle_delta_rad = getRollAngleDeltaRad(settings_ptr);
@@ -133,7 +138,8 @@ void getRollAnimationQuaternion(float time_delta, AnimationSettings* settings_pt
         state_ptr->t += time_delta * state_ptr->cur_speed_rad_per_sec / roll_angle_delta_rad;
 
         // Interpolate frame rotation from previous position to desired position
-        glm_quat_slerp(state_ptr->q_prev, state_ptr->q_arr[state_ptr->cur_n], glm_min(state_ptr->t, 1.0), q_out);
+        glm_quat_slerp(state_ptr->q_prev, state_ptr->q_arr[state_ptr->cur_n],
+                       glm_min(state_ptr->t, 1.0), q_out);
 
         if (state_ptr->t >= 1.0) {
             state_ptr->cur_n += 1;

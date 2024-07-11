@@ -198,9 +198,8 @@ void renderLoop(GLFWwindow* window, Settings settings, SceneRenderer* scene_rend
     bool is_in_wire_mode = false;
     bool is_in_idle_animation = true;
 
-    versor rot_quat;
+    versor rot_quat;  // dice rotation quaternion for each frame
     RollAnimationState roll_anim_state = initRollAnimationState(settings.anim.n_points);
-    resetRollAnimationState(&roll_anim_state);
 
     while (!glfwWindowShouldClose(window)) {
         // Clear buffers
@@ -213,7 +212,7 @@ void renderLoop(GLFWwindow* window, Settings settings, SceneRenderer* scene_rend
 
         showFpsInWindowTitle(window);
 
-        // Advance time
+        // Advance time counter
         double cur_time = glfwGetTime();
         double delta = cur_time - prev_time;
         prev_time = cur_time;
@@ -223,15 +222,14 @@ void renderLoop(GLFWwindow* window, Settings settings, SceneRenderer* scene_rend
             is_in_idle_animation = false;
             g_start_roll = false;
             g_is_rolling = true;
-            resetRollAnimationState(&roll_anim_state);
-            glm_quat_copy(rot_quat, roll_anim_state.q_prev);
 
             size_t dice_value = (size_t)(rand() % 20 + 1);
             // printf("Rolled number: %zu\n", dice_value);
-            fillRollAnimationQueue(&roll_anim_state, &settings.anim, dice_value);
+            fillRollAnimationQueue(&roll_anim_state, rot_quat, &settings.anim, dice_value);
         }
 
         // Animation
+        // get rotation quaternion for current frame
         if (is_in_idle_animation) {
             // Idle animation
             getIdleAnimationQuaternion(delta, settings.anim.idle_rot_speed, rot_quat);

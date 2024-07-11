@@ -159,11 +159,6 @@ void initIcosahedronMeshFromVertices(void) {
                 // Constant of the plane equation
                 float c = p1.x * n[0] + p1.y * n[1] + p1.z * n[2];
 
-                printf("[%d] ijk = %zu,%zu,%zu -> %zu,%zu,%zu\n",
-                       (int)(count / 3),
-                       i, j, k,
-                       c > 0.0f ? i : j, c > 0.0f ? j : i, k);
-
                 // Save original vertices to form triangle
                 if (c > 0.0f) {
                     gIcosahedronMesh[count] = p1;
@@ -196,7 +191,8 @@ void initIcosahedronMeshFromVertices(void) {
                     indices[2] = k;
                 }
                 int first, second;
-                size_t n_vtex_positions = sizeof(gVerticesTexturePositions) / sizeof(IcosahedronVertexTexturePosition);
+                size_t n_vtex_positions = sizeof(gVerticesTexturePositions) 
+                                          / sizeof(IcosahedronVertexTexturePosition);
                 for (size_t v = 0; v < 3; ++v) {
                     first = (v == 0) ? indices[1] : indices[0];
                     second = (v == 2) ? indices[1] : indices[2];
@@ -225,12 +221,12 @@ void initIcosahedronMeshFromVertices(void) {
     }
 
     // Print the result
-    for (size_t v = 0; v < 20 * 3; ++v) {
-        printf("[%zu] (x=%.1f,y=%.1f,z=%.1f), (n1=%.2f,n2=%.2f,n3=%.2f), (tx=%.2f, ty=%.2f)\n",
-            v, gIcosahedronMesh[v].x, gIcosahedronMesh[v].y, gIcosahedronMesh[v].z,
-            gIcosahedronMesh[v].n[0], gIcosahedronMesh[v].n[1], gIcosahedronMesh[v].n[2],
-            gIcosahedronMesh[v].t_x, gIcosahedronMesh[v].t_y);
-    }
+    // for (size_t v = 0; v < 20 * 3; ++v) {
+    //     printf("[%zu] (x=%.1f,y=%.1f,z=%.1f), (n1=%.2f,n2=%.2f,n3=%.2f), (tx=%.2f, ty=%.2f)\n",
+    //            v, gIcosahedronMesh[v].x, gIcosahedronMesh[v].y, gIcosahedronMesh[v].z,
+    //            gIcosahedronMesh[v].n[0], gIcosahedronMesh[v].n[1], gIcosahedronMesh[v].n[2],
+    //            gIcosahedronMesh[v].t_x, gIcosahedronMesh[v].t_y);
+    // }
 
     g_is_initialized = true;
 }
