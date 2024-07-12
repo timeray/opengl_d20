@@ -67,8 +67,7 @@ static Status initTextures(const char* path, GLuint* texture_id) {
         glTextureStorage2D(*texture_id, 1, GL_RGB8, width, height);
         glTextureSubImage2D(*texture_id, 0, 0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, data);
         glGenerateTextureMipmap(*texture_id);
-    }
-    else {
+    } else {
         status = STATUS_ERR;
     }
     stbi_image_free(data);
@@ -149,8 +148,9 @@ static void setLightingUniformMatrices(
 }
 
 
-static void computeDiceGeometry(SceneSettings* settings_ptr, versor rotation_quat, float aspect_ratio,
-                                mat4 model, mat4 view, mat3 normal_matrix, mat4 projection) {
+static void computeDiceGeometry(SceneSettings* settings_ptr, versor rotation_quat,
+                                float aspect_ratio, mat4 model, mat4 view, 
+                                mat3 normal_matrix, mat4 projection) {
     glm_mat4_identity(model);
     glm_scale(model, (vec3) { settings_ptr->scale, settings_ptr->scale, settings_ptr->scale });
     glm_quat_rotate(model, rotation_quat, model);  // apply model rotation for current frame
@@ -181,7 +181,7 @@ static void computeLightingGeometry(mat4 scene_view, vec3 scene_direction, vec3 
 }
 
 
-void renderScene(SceneRenderer* dice_ptr, const SceneSettings* settings_ptr, versor rot_quat,
+void renderScene(SceneRenderer* dice_ptr, SceneSettings* settings_ptr, versor rot_quat,
                 float aspect_ratio, bool wireMode) {
     glUseProgram(dice_ptr->shader.id);
     mat4 model, view, projection;
@@ -197,8 +197,7 @@ void renderScene(SceneRenderer* dice_ptr, const SceneSettings* settings_ptr, ver
     size_t n = sizeof(gIcosahedronMesh) / sizeof(Vertex);
     if (wireMode == false) {
         glDrawArrays(GL_TRIANGLES, 0, n);
-    }
-    else {
+    } else {
         for (size_t i = 0; i < n / 3; ++i) {
             glDrawArrays(GL_LINE_LOOP, i * 3, 3);
         }

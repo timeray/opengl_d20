@@ -31,8 +31,7 @@ static Status loadShaderText(const char* path, char** outBuf) {
 
         buf[length] = '\0';
         fclose(file);
-    }
-    else {
+    } else {
         puts("Unable to allocate buffer to read file");
         return STATUS_ERR;
     }
@@ -47,8 +46,7 @@ static Status compileShader(GLuint shader, const char* path) {
 
     if (status != STATUS_OK) {
         printf("Unable to read shader\n");
-    }
-    else {
+    } else {
         glShaderSource(shader, 1, &shader_text, NULL);
         glCompileShader(shader);
         free(shader_text);
@@ -97,31 +95,32 @@ static void freeShader(GLuint shader) {
 
 
 Status initProgram(const char* vertex_shader_path, const char* fragment_shader_path, ShaderProgram* shader_program) {
-    Status status = initShader(vertex_shader_path, VERTEX_SHADER, &shader_program->vertex_shader);
+    GLuint vertex_shader, fragment_shader;
+    Status status = initShader(vertex_shader_path, VERTEX_SHADER, &vertex_shader);
 
     if (status == STATUS_OK) {
-        status = initShader(fragment_shader_path, FRAGMENT_SHADER, &shader_program->fragment_shader);
+        status = initShader(fragment_shader_path, FRAGMENT_SHADER, &fragment_shader);
     } else {
         return status;
     }
 
     if (status == STATUS_ERR) {
-        freeShader(shader_program->vertex_shader);
+        freeShader(vertex_shader);
         return status;
     }
 
     shader_program->id = glCreateProgram();
-    glAttachShader(shader_program->id, shader_program->vertex_shader);
-    glAttachShader(shader_program->id, shader_program->fragment_shader);
+    glAttachShader(shader_program->id, vertex_shader);
+    glAttachShader(shader_program->id, fragment_shader);
     glLinkProgram(shader_program->id);
     GLint link_success;
     glGetProgramiv(shader_program->id, GL_LINK_STATUS, &link_success);
     if (!link_success) {
         status = STATUS_ERR;
         puts("Shader linking error");
-        freeShader(shader_program->vertex_shader);
-        freeShader(shader_program->fragment_shader);
     }
+    freeShader(vertex_shader);
+    freeShader(fragment_shader);
 
     return status;
 }
@@ -129,8 +128,6 @@ Status initProgram(const char* vertex_shader_path, const char* fragment_shader_p
 
 void freeProgram(ShaderProgram* shader_program) {
     glDeleteProgram(shader_program->id);
-    freeShader(shader_program->vertex_shader);
-    freeShader(shader_program->fragment_shader);
 }
 
 
