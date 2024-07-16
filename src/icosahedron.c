@@ -103,8 +103,7 @@ static GLfloat getDistance(Vertex v1, Vertex v2) {
 static bool almostEqual(GLfloat v1, GLfloat v2) {
     if (fabs(v1 - v2) < 0.001) {
         return true;
-    }
-    else {
+    } else {
         return false;
     }
 }

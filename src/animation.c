@@ -124,8 +124,7 @@ void getRollAnimationQuaternion(float time_delta, const AnimationSettings* setti
     // Determine speed
     if (state_ptr->cur_n <= n_points / 2) {
         state_ptr->cur_speed_rad_per_sec = glm_rad(settings_ptr->max_rot_speed);
-    }
-    else {
+    } else {
         state_ptr->cur_speed_rad_per_sec = glm_max(
             glm_rad(settings_ptr->min_rot_speed),
             state_ptr->cur_speed_rad_per_sec - glm_rad(settings_ptr->deaceleration) * time_delta
@@ -147,8 +146,7 @@ void getRollAnimationQuaternion(float time_delta, const AnimationSettings* setti
             glm_quat_copy(q_out, state_ptr->q_prev);
         }
         state_ptr->hasFinished = false;
-    }
-    else {
+    } else {
         glm_quat_copy(state_ptr->q_arr[state_ptr->cur_n - 1], q_out);
         state_ptr->hasFinished = true;
     }

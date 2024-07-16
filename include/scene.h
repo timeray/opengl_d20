@@ -46,5 +46,5 @@ typedef struct {
 Status initSceneRenderer(SceneRenderer* renderer);
 void freeSceneRenderer(SceneRenderer* renderer);
 
-void renderScene(SceneRenderer* renderer, const SceneSettings* settings, versor rot_quat,
+void renderScene(SceneRenderer* renderer, SceneSettings* settings, versor rot_quat,
                  float aspect_ratio, bool wireMode);

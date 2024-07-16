@@ -6,8 +6,6 @@
 
 typedef struct {
     GLuint id;  // OpenGL program id
-    GLuint vertex_shader;
-    GLuint fragment_shader;
 } ShaderProgram;
 
 

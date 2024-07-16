@@ -157,6 +157,8 @@ Status initGLFW(const WindowSettings* settings, GLFWwindow** out_window) {
     glfwSetFramebufferSizeCallback(window, resizeCallback);
     glfwMakeContextCurrent(window);
 
+    glfwSwapInterval(0);
+
     *out_window = window;
 
     return STATUS_OK;
@@ -257,10 +259,6 @@ void renderLoop(GLFWwindow* window, Settings settings, SceneRenderer* scene_rend
 
         // Swap front buffer (display) with back buffer (where we render to)
         glfwSwapBuffers(window);
-
-        // Fixed framerate
-        //glfwSwapInterval(1);  // swap after at least one screen update (aka vsync)
-        glfwSwapInterval(0);  // unlimited fps
 
         // Communicate with the window system to received events and show that applications hasn't locked up 
         glfwPollEvents();
