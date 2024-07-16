@@ -1,5 +1,5 @@
 # Roll a D20
-![image](resources/ezgif-2-b934375431.webp)
+![image](resources/animation.webp)
 ## Build
 1. Clone repository with submodules (`--recursive`)
 2. Go to project directory
