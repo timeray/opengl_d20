@@ -175,8 +175,6 @@ void renderText(TextRenderer* renderer_ptr, const char* text, TextSettings* sett
     computeTextGeometry(window_width, window_height, text_projection);
     setTextUniformMatrices(&renderer_ptr->uvars, settings_ptr->text_color, text_projection);
 
-    glBindVertexArray(renderer_ptr->vao);
-
     float size = settings_ptr->text_size;
     for (size_t i = 0; i < strlen(text); ++i) {
 
@@ -197,14 +195,8 @@ void renderText(TextRenderer* renderer_ptr, const char* text, TextSettings* sett
             { xpos + w, ypos,       1.0f, 1.0f },
             { xpos + w, ypos + h,   1.0f, 0.0f }
         };
-        for (size_t i = 0; i < 6; ++i) {
-            vec4 v;
-            v[0] = vertices[i][0];
-            v[1] = vertices[i][1];
-            v[2] = 0.0f;
-            v[3] = 1.0f;
-            glm_mat4_mulv(text_projection, v, v);
-        }
+
+        glBindVertexArray(renderer_ptr->vao);
         glBindTextureUnit(0, ch.texture_id);
         glNamedBufferSubData(renderer_ptr->vbo, 0, sizeof(vertices), vertices);
         glDrawArrays(GL_TRIANGLES, 0, 6);
