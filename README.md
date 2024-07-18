@@ -1,6 +1,8 @@
 # Roll a D20
 ![image](resources/animation.webp)
 
+Try your luck and roll a D20. Be amused by simple but charming animation revealing the enchanted facets of the icosahedron.
+
 ## Requirements
 - OpenGL 4.5 compatible GPU
 
